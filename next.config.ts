@@ -7,6 +7,9 @@ const withNextIntl = createNextIntlPlugin("./src/i18n/request.ts");
 const nextConfig: NextConfig = {
   output: "standalone",
 
+  // 关闭开发态页面悬浮指示器，保留错误信息输出
+  devIndicators: false,
+
   // 转译 ESM 模块（@lobehub/icons 需要）
   transpilePackages: ["@lobehub/icons"],
 
@@ -33,6 +36,9 @@ const nextConfig: NextConfig = {
   // 文件上传大小限制（用于数据库备份导入）
   // Next.js 15 通过 serverActions.bodySizeLimit 统一控制
   experimental: {
+    browserDebugInfoInTerminal: {
+      showSourceLocation: true,
+    },
     serverActions: {
       bodySizeLimit: "500mb",
     },
