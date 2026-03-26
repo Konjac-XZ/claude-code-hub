@@ -3,14 +3,22 @@
 import { useInfiniteQuery } from "@tanstack/react-query";
 import { ArrowUp, GitBranch, Loader2 } from "lucide-react";
 import { useTranslations } from "next-intl";
-import { type MouseEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  type MouseEvent,
+  useCallback,
+  useEffect,
+  useEffectEvent,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { toast } from "sonner";
 import { getUsageLogsBatch } from "@/actions/usage-logs";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { RelativeTime } from "@/components/ui/relative-time";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
-import { useVirtualizer } from "@/hooks/use-virtualizer";
+import { useVirtualizedInfiniteList } from "@/hooks/use-virtualized-infinite-list";
 import type { LogsTableColumn } from "@/lib/column-visibility";
 import { cn, formatTokenAmount } from "@/lib/utils";
 import { copyTextToClipboard } from "@/lib/utils/clipboard";
@@ -80,9 +88,8 @@ export function VirtualizedLogsTable({
   const getPricingSourceLabel = (source: string) =>
     t(`logs.billingDetails.pricingSource.${source}`);
   const tChain = useTranslations("provider-chain");
-  const parentRef = useRef<HTMLDivElement>(null);
-  const [showScrollToTop, setShowScrollToTop] = useState(false);
-  const shouldPoll = autoRefreshEnabled && !showScrollToTop;
+  const [isHistoryBrowsing, setIsHistoryBrowsing] = useState(false);
+  const shouldPoll = autoRefreshEnabled && !isHistoryBrowsing;
 
   const hideProviderColumn = hiddenColumns?.includes("provider") ?? false;
   const hideUserColumn = hiddenColumns?.includes("user") ?? false;
@@ -137,51 +144,50 @@ export function VirtualizedLogsTable({
         if (query.state.fetchStatus !== "idle") return false;
         return autoRefreshIntervalMs;
       },
-      maxPages: 5,
     });
 
   // Flatten all pages into a single array
   const pages = data?.pages;
   const allLogs = useMemo(() => pages?.flatMap((page) => page.logs) ?? [], [pages]);
+  const filtersResetKey = useMemo(() => JSON.stringify(filters), [filters]);
+  const previousFiltersResetKeyRef = useRef(filtersResetKey);
 
-  // Virtual list setup
-  const rowVirtualizer = useVirtualizer({
-    count: hasNextPage ? allLogs.length + 1 : allLogs.length,
-    getScrollElement: () => parentRef.current,
+  const getItemKey = useCallback(
+    (index: number) => allLogs[index]?.id ?? `loader-${index}`,
+    [allLogs]
+  );
+
+  const {
+    parentRef,
+    rowVirtualizer,
+    virtualItems,
+    showScrollToTop,
+    handleScroll,
+    scrollToTop,
+    resetScrollPosition,
+  } = useVirtualizedInfiniteList({
+    itemCount: allLogs.length,
+    hasNextPage,
+    isFetchingNextPage,
+    fetchNextPage,
     estimateSize: () => ROW_HEIGHT,
     overscan: 10,
+    getItemKey,
   });
 
-  const virtualItems = rowVirtualizer.getVirtualItems();
-  const lastItemIndex = virtualItems[virtualItems.length - 1]?.index ?? -1;
-
-  // Auto-fetch next page when scrolling near the bottom
   useEffect(() => {
-    // If the last visible item is a loading row or near the end, fetch more
-    if (lastItemIndex >= allLogs.length - 5 && hasNextPage && !isFetchingNextPage) {
-      fetchNextPage();
-    }
-  }, [lastItemIndex, hasNextPage, isFetchingNextPage, allLogs.length, fetchNextPage]);
+    setIsHistoryBrowsing(showScrollToTop);
+  }, [showScrollToTop]);
 
-  // Track scroll position for "scroll to top" button
-  const handleScroll = useCallback(() => {
-    if (parentRef.current) {
-      setShowScrollToTop(parentRef.current.scrollTop > 500);
-    }
-  }, []);
+  const handleFiltersReset = useEffectEvent((nextResetKey: string) => {
+    if (previousFiltersResetKeyRef.current === nextResetKey) return;
+    previousFiltersResetKeyRef.current = nextResetKey;
+    resetScrollPosition();
+  });
 
-  // Scroll to top handler
-  const scrollToTop = useCallback(() => {
-    parentRef.current?.scrollTo({ top: 0, behavior: "smooth" });
-  }, []);
-
-  // Reset scroll when filters change
-  // biome-ignore lint/correctness/useExhaustiveDependencies: `filters` is an intentional trigger
   useEffect(() => {
-    if (parentRef.current) {
-      parentRef.current.scrollTop = 0;
-    }
-  }, [filters]);
+    handleFiltersReset(filtersResetKey);
+  }, [filtersResetKey]);
 
   if (isLoading) {
     return (
@@ -208,7 +214,7 @@ export function VirtualizedLogsTable({
     <div className="space-y-4">
       {/* Status bar */}
       {hideStatusBar ? null : (
-        <div className="flex items-center justify-between text-sm text-muted-foreground">
+        <div className="flex items-center justify-between text-xs text-muted-foreground/70 px-3 pt-2">
           <span>{t("logs.table.loadedCount", { count: allLogs.length })}</span>
           {isFetchingNextPage && (
             <span className="flex items-center gap-2">
@@ -221,11 +227,11 @@ export function VirtualizedLogsTable({
       )}
 
       {/* Table with virtual scrolling */}
-      <div className="border-t overflow-x-auto">
+      <div className="overflow-x-auto">
         <div className="min-w-[800px]">
           {/* Fixed header */}
-          <div className="bg-muted/40 border-b sticky top-0 z-10">
-            <div className="flex items-center h-9 text-xs font-medium text-muted-foreground uppercase tracking-wider">
+          <div className="bg-muted/30 border-b sticky top-0 z-10">
+            <div className="flex items-center h-8 text-[11px] font-medium text-muted-foreground/80 tracking-wide">
               <div className="flex-[0.6] min-w-[56px] pl-3 truncate" title={t("logs.columns.time")}>
                 {t("logs.columns.time")}
               </div>
@@ -360,8 +366,8 @@ export function VirtualizedLogsTable({
                       transform: `translateY(${virtualRow.start}px)`,
                     }}
                     className={cn(
-                      "flex items-center text-sm border-b transition-colors hover:bg-muted/30",
-                      isNonBilling ? "bg-muted/40 text-muted-foreground dark:bg-muted/20" : ""
+                      "flex items-center text-sm border-b border-border/40 transition-colors hover:bg-accent/50",
+                      isNonBilling ? "bg-muted/30 text-muted-foreground dark:bg-muted/15" : ""
                     )}
                   >
                     {/* Time */}

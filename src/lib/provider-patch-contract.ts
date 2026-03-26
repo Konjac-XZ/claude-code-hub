@@ -1,3 +1,4 @@
+import { normalizeProviderGroupTag } from "@/lib/utils/provider-group";
 import type {
   ProviderBatchApplyUpdates,
   ProviderBatchPatch,
@@ -234,6 +235,7 @@ function isValidSetValue(field: ProviderBatchPatchField, value: unknown): boolea
     case "request_timeout_non_streaming_ms":
       return typeof value === "number" && Number.isFinite(value);
     case "group_tag":
+      return typeof value === "string" && value.length <= 255;
     case "daily_reset_time":
     case "proxy_url":
     case "mcp_passthrough_url":
@@ -364,6 +366,11 @@ function normalizePatchField<T>(
 
     if (!isValidSetValue(field, input.set)) {
       return createInvalidPatchShapeError(field, "set mode value is invalid for this field");
+    }
+
+    if (field === "group_tag") {
+      const normalizedGroupTag = normalizeProviderGroupTag(input.set) ?? "";
+      return { ok: true, data: { mode: "set", value: normalizedGroupTag as T } };
     }
 
     return { ok: true, data: { mode: "set", value: input.set as T } };

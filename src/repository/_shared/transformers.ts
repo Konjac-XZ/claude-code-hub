@@ -72,6 +72,7 @@ export function toKey(dbKey: any): Key {
       dbKey?.limitTotalUsd !== null && dbKey?.limitTotalUsd !== undefined
         ? parseFloat(dbKey.limitTotalUsd)
         : null,
+    costResetAt: dbKey?.costResetAt ? new Date(dbKey.costResetAt) : null,
     limitConcurrentSessions: dbKey?.limitConcurrentSessions ?? 0,
     providerGroup: dbKey?.providerGroup ?? null,
     cacheTtlPreference: dbKey?.cacheTtlPreference ?? null,
@@ -196,6 +197,11 @@ export function toSystemSettings(dbSettings: any): SystemSettings {
     allowGlobalUsageView: dbSettings?.allowGlobalUsageView ?? true,
     currencyDisplay: dbSettings?.currencyDisplay ?? "USD",
     billingModelSource: dbSettings?.billingModelSource ?? "original",
+    codexPriorityBillingSource:
+      dbSettings?.codexPriorityBillingSource === "requested" ||
+      dbSettings?.codexPriorityBillingSource === "actual"
+        ? dbSettings.codexPriorityBillingSource
+        : "requested",
     timezone: dbSettings?.timezone ?? null,
     enableAutoCleanup: dbSettings?.enableAutoCleanup ?? false,
     cleanupRetentionDays: dbSettings?.cleanupRetentionDays ?? 30,

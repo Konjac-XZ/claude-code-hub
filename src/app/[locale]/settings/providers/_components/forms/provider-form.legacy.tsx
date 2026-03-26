@@ -34,6 +34,7 @@ import { TagInput } from "@/components/ui/tag-input";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { PROVIDER_DEFAULTS, PROVIDER_TIMEOUT_DEFAULTS } from "@/lib/constants/provider.constants";
 import { getProviderTypeConfig } from "@/lib/provider-type-utils";
+import { parseProviderGroups } from "@/lib/utils/provider-group";
 import {
   extractBaseUrl,
   isValidUrl,
@@ -55,7 +56,7 @@ import { ApiTestButton } from "./api-test-button";
 import { ProxyTestButton } from "./proxy-test-button";
 import { UrlPreview } from "./url-preview";
 
-const GROUP_TAG_MAX_TOTAL_LENGTH = 50;
+const GROUP_TAG_MAX_TOTAL_LENGTH = 255;
 
 type Mode = "create" | "edit";
 
@@ -175,14 +176,7 @@ export function ProviderForm({
   const [costMultiplier, setCostMultiplier] = useState<number>(
     sourceProvider?.costMultiplier ?? 1.0
   );
-  const [groupTag, setGroupTag] = useState<string[]>(
-    sourceProvider?.groupTag
-      ? sourceProvider.groupTag
-          .split(",")
-          .map((t) => t.trim())
-          .filter(Boolean)
-      : []
-  );
+  const [groupTag, setGroupTag] = useState<string[]>(parseProviderGroups(sourceProvider?.groupTag));
   const [groupSuggestions, setGroupSuggestions] = useState<string[]>([]);
   const [limit5hUsd, setLimit5hUsd] = useState<number | null>(sourceProvider?.limit5hUsd ?? null);
   const [limitDailyUsd, setLimitDailyUsd] = useState<number | null>(
@@ -430,7 +424,7 @@ export function ProviderForm({
       return;
     }
 
-    // group_tag 在 DB/schema 中限制为 varchar(50)，并且后端按整串校验 max(50)
+    // group_tag 在 DB/schema 中限制为 varchar(255)，并且后端按整串校验 max(255)
     // 这里限制逗号拼接后的总长度，避免"UI 看似可选多标签，但保存必失败"的体验
     const serializedGroupTag = groupTag.join(",");
     if (serializedGroupTag.length > GROUP_TAG_MAX_TOTAL_LENGTH) {
@@ -890,13 +884,14 @@ export function ProviderForm({
                     onChange={handleGroupTagChange}
                     placeholder={t("sections.routing.scheduleParams.group.placeholder")}
                     disabled={isPending}
-                    maxTagLength={GROUP_TAG_MAX_TOTAL_LENGTH}
+                    maxTagLength={50}
                     suggestions={groupSuggestions}
+                    validateTag={() => true}
                     onInvalidTag={(_tag, reason) => {
                       const messages: Record<string, string> = {
                         empty: tUI("emptyTag"),
                         duplicate: tUI("duplicateTag"),
-                        too_long: tUI("tooLong", { max: GROUP_TAG_MAX_TOTAL_LENGTH }),
+                        too_long: tUI("tooLong", { max: 50 }),
                         invalid_format: tUI("invalidFormat"),
                         max_tags: tUI("maxTags"),
                       };

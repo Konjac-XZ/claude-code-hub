@@ -217,6 +217,8 @@ export function UserForm({ user, onSuccess, currentUser }: UserFormProps) {
         placeholder={tForm("providerGroup.placeholder")}
         description={tForm("providerGroup.description")}
         suggestions={providerGroupSuggestions}
+        // Provider groups intentionally accept shared parser output without extra format validation.
+        validateTag={() => true}
         onInvalidTag={(_tag, reason) => {
           const messages: Record<string, string> = {
             empty: tUI("emptyTag"),
@@ -408,6 +410,9 @@ export function UserForm({ user, onSuccess, currentUser }: UserFormProps) {
                 "sdk-py": tUserEdit("subClients.sdk-py"),
                 "cli-sdk": tUserEdit("subClients.cli-sdk"),
                 "gh-action": tUserEdit("subClients.gh-action"),
+                "codex-cli-core": tUserEdit("subClients.codex-cli-core"),
+                desktop: tUserEdit("subClients.desktop"),
+                exec: tUserEdit("subClients.exec"),
               },
               nSelected: tUserEdit("nSelected", { count: "{count}" }),
             }}

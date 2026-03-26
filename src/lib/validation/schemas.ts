@@ -441,7 +441,7 @@ export const CreateProviderSchema = z
       .optional()
       .default(null),
     cost_multiplier: z.coerce.number().min(0, "成本倍率不能为负数").optional().default(1.0),
-    group_tag: z.string().max(50, "分组标签不能超过50个字符").nullable().optional(),
+    group_tag: z.string().max(255, "分组标签不能超过255个字符").nullable().optional(),
     // Codex 支持:供应商类型和模型重定向
     provider_type: z
       .enum(["claude", "claude-auth", "codex", "gemini", "gemini-cli", "openai-compatible"])
@@ -679,7 +679,7 @@ export const UpdateProviderSchema = z
       .nullable()
       .optional(),
     cost_multiplier: z.coerce.number().min(0, "成本倍率不能为负数").optional(),
-    group_tag: z.string().max(50, "分组标签不能超过50个字符").nullable().optional(),
+    group_tag: z.string().max(255, "分组标签不能超过255个字符").nullable().optional(),
     // Codex 支持:供应商类型和模型重定向
     provider_type: z
       .enum(["claude", "claude-auth", "codex", "gemini", "gemini-cli", "openai-compatible"])
@@ -903,6 +903,9 @@ export const UpdateSystemSettingsSchema = z.object({
   // 计费模型来源配置（可选）
   billingModelSource: z
     .enum(["original", "redirected"], { message: "不支持的计费模型来源" })
+    .optional(),
+  codexPriorityBillingSource: z
+    .enum(["requested", "actual"], { message: "不支持的 Codex Priority 计费来源" })
     .optional(),
   // 系统时区配置（可选）
   // 必须是有效的 IANA 时区标识符（如 "Asia/Shanghai", "America/New_York"）
