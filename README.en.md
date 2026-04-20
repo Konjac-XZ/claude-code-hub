@@ -67,20 +67,6 @@ Register via this link to get started → <a href="https://co.yes.vg/register?re
 <table>
 <tr>
 <td width="200">
-<a href="https://www.sssaicode.com/register?ref=NQMO05">
-<img src="public/readme/sssaicode.jpg" alt="SSSAiCode Logo" width="180"/>
-</a>
-</td>
-<td>
-<b>💎 Special Offer</b>: <a href="https://www.sssaicode.com/register?ref=NQMO05">SSSAiCode</a> is a stable and reliable API relay service, dedicated to providing stable, reliable, and affordable Claude and CodeX model services. <b>Offering cost-effective official Claude services at 0.5 CNY/$</b>, with multiple billing options including monthly plans and Pay-as-you-go, plus same-day invoice support.<br/>
-SSSAiCode offers a special bonus for users of this software. Register via this link to enjoy an extra $10 bonus on monthly plan purchases → <a href="https://www.sssaicode.com/register?ref=NQMO05">Visit Now</a>
-</td>
-</tr>
-</table>
-
-<table>
-<tr>
-<td width="200">
 <a href="https://aigocode.com/invite/QDNEJJAH">
 <img src="public/readme/aigocode.jpg" alt="AIGoCode Logo" width="180"/>
 </a>
@@ -88,6 +74,21 @@ SSSAiCode offers a special bonus for users of this software. Register via this l
 <td>
 <b>💎 Special Offer</b>: <a href="https://aigocode.com/invite/QDNEJJAH">AIGoCode</a> is an all-in-one platform integrating the latest models from Claude Code, Codex, and Gemini, delivering stable, efficient, and cost-effective AI coding services. Flexible subscription plans (monthly or bundled), zero ban risk, direct access from China, massive credit pools, and lightning-fast responses.<br/>
 AIGoCode offers a special bonus for CCH users — register via this link and receive an extra <b>10% bonus credit</b> on your first top-up → <a href="https://aigocode.com/invite/QDNEJJAH">Visit Now</a>
+</td>
+</tr>
+</table>
+
+<table>
+<tr>
+<td width="200">
+<a href="https://www.aicodemirror.com/register?invitecode=ZRQVL9">
+<img src="public/readme/aicodemirror.jpg" alt="AICodeMirror Logo" width="180"/>
+</a>
+</td>
+<td>
+<b>💎 Special Offer</b>: Thanks to <a href="https://www.aicodemirror.com/register?invitecode=ZRQVL9">AICodeMirror</a> for sponsoring this project! AICodeMirror provides official high-stability relay services for Claude Code / Codex / Gemini CLI, with enterprise-grade concurrency, fast invoicing, and 24/7 dedicated technical support.<br/>
+Claude Code / Codex / Gemini official channels at 38% / 6% / 9% of original price, with extra discounts on top-ups!<br/>
+For claude-code-hub users, AICodeMirror offers special benefits: register via this link to enjoy 20% off your first top-up, and enterprise customers can get up to 25% off! → <a href="https://www.aicodemirror.com/register?invitecode=ZRQVL9">Visit Now</a>
 </td>
 </tr>
 </table>
