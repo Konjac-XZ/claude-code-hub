@@ -1,4 +1,4 @@
-import { isIP } from "node:net";
+import { isIP } from "./is-ip";
 
 function ipv4ToInt(ip: string): number | null {
   const parts = ip.split(".");

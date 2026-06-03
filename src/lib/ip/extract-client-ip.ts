@@ -1,10 +1,10 @@
-import { isIP } from "node:net";
 import {
   DEFAULT_IP_EXTRACTION_CONFIG,
   type IpExtractionConfig,
   type IpHeaderRule,
   type XffPick,
 } from "@/types/ip-extraction";
+import { isIP } from "./is-ip";
 
 export type HeadersLike = Headers | Record<string, string | string[] | undefined>;
 

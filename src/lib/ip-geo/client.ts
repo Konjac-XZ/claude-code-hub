@@ -1,5 +1,5 @@
-import { isIP } from "node:net";
 import { getEnvConfig } from "@/lib/config/env.schema";
+import { isIP } from "@/lib/ip/is-ip";
 import { isPrivateIp } from "@/lib/ip/private-ip";
 import { logger } from "@/lib/logger";
 import { getRedisClient } from "@/lib/redis/client";
