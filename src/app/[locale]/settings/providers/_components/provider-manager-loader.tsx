@@ -31,7 +31,7 @@ function ProviderManagerLoaderContent({
     queryKey: ["providers"],
     queryFn: getProviders,
     refetchOnWindowFocus: false,
-    staleTime: 300_000,
+    staleTime: 30_000,
   });
 
   const {
@@ -42,7 +42,7 @@ function ProviderManagerLoaderContent({
     queryKey: ["providers-health"],
     queryFn: getProvidersHealthStatus,
     refetchOnWindowFocus: false,
-    staleTime: 300_000,
+    staleTime: 30_000,
   });
 
   // Statistics loaded independently with longer cache
@@ -51,7 +51,7 @@ function ProviderManagerLoaderContent({
       queryKey: ["providers-statistics"],
       queryFn: getProviderStatisticsAsync,
       refetchOnWindowFocus: false,
-      staleTime: 300_000,
+      staleTime: 30_000,
       refetchInterval: 60_000,
     });
 
@@ -63,7 +63,7 @@ function ProviderManagerLoaderContent({
     queryKey: ["system-settings"],
     queryFn: getSystemSettings,
     refetchOnWindowFocus: false,
-    staleTime: 300_000,
+    staleTime: 30_000,
   });
 
   const loading = isProvidersLoading || isHealthLoading || isSettingsLoading;
