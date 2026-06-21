@@ -9,6 +9,7 @@ import {
   Loader2,
   Search,
 } from "lucide-react";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useTranslations } from "next-intl";
 import { type ReactNode, useCallback, useEffect, useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
@@ -26,6 +27,12 @@ import {
 import { Skeleton } from "@/components/ui/skeleton";
 import { Switch } from "@/components/ui/switch";
 import { useDebounce } from "@/lib/hooks/use-debounce";
+import {
+  getProviderTypeTranslationKey,
+  getUserFacingProviderTypes,
+  PROVIDER_TYPE_CONFIG,
+} from "@/lib/provider-type-utils";
+import { cn } from "@/lib/utils";
 import type { CurrencyCode } from "@/lib/utils/currency";
 import { parseProviderGroups, resolveProviderGroupsWithDefault } from "@/lib/utils/provider-group";
 import type {
@@ -49,6 +56,24 @@ import { ProviderList } from "./provider-list";
 import { ProviderSortDropdown, type SortKey } from "./provider-sort-dropdown";
 import { ProviderTypeFilter } from "./provider-type-filter";
 import { ProviderVendorView } from "./provider-vendor-view";
+
+type ProviderStatusFilter = "all" | "active" | "inactive";
+
+const STATUS_FILTERS: ProviderStatusFilter[] = ["all", "active", "inactive"];
+
+function parseProviderTypeFilter(value: string | null): ProviderType | "all" {
+  if (!value || value === "all") return "all";
+  return getUserFacingProviderTypes().includes(value as ProviderType)
+    ? (value as ProviderType)
+    : "all";
+}
+
+function parseStatusFilter(value: string | null): ProviderStatusFilter {
+  if (!value) return "all";
+  return STATUS_FILTERS.includes(value as ProviderStatusFilter)
+    ? (value as ProviderStatusFilter)
+    : "all";
+}
 
 /** Per-endpoint circuit breaker state, keyed by provider ID */
 export type EndpointCircuitInfoMap = Record<
@@ -89,18 +114,27 @@ export function ProviderManager({
   refreshing = false,
   addDialogSlot,
 }: ProviderManagerProps) {
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
   const t = useTranslations("settings.providers.search");
   const tStrings = useTranslations("settings.providers");
   const tFilter = useTranslations("settings.providers.filter");
   const tCommon = useTranslations("settings.common");
-  const [typeFilter, setTypeFilter] = useState<ProviderType | "all">("all");
+  const tTypes = useTranslations("settings.providers.types");
+  const tForm = useTranslations("settings.providers.form");
+  const [typeFilter, setTypeFilter] = useState<ProviderType | "all">(() =>
+    parseProviderTypeFilter(searchParams.get("provider") ?? searchParams.get("providerType"))
+  );
   const [sortBy, setSortBy] = useState<SortKey>("priority");
   const [searchTerm, setSearchTerm] = useState("");
   const [viewMode, setViewMode] = useState<"list" | "vendor" | "groups">("list");
   const debouncedSearchTerm = useDebounce(searchTerm, 500);
 
   // Status and group filters
-  const [statusFilter, setStatusFilter] = useState<"all" | "active" | "inactive">("all");
+  const [statusFilter, setStatusFilter] = useState<ProviderStatusFilter>(() =>
+    parseStatusFilter(searchParams.get("status"))
+  );
   const [groupFilter, setGroupFilter] = useState<string[]>([]);
   const [circuitBrokenFilter, setCircuitBrokenFilter] = useState(false);
   const [mobileFilterOpen, setMobileFilterOpen] = useState(false);
@@ -112,6 +146,68 @@ export function ProviderManager({
   const [batchActionMode, setBatchActionMode] = useState<BatchActionMode>(null);
   const [batchTestOpen, setBatchTestOpen] = useState(false);
   const [editingProviderId, setEditingProviderId] = useState<number | null>(null);
+
+  const updateUrlFilters = useCallback(
+    (nextTypeFilter: ProviderType | "all", nextStatusFilter: ProviderStatusFilter) => {
+      const params = new URLSearchParams(searchParams.toString());
+      const currentProvider = params.get("provider");
+      const legacyProviderType = params.get("providerType");
+      const nextProvider = nextTypeFilter === "all" ? null : nextTypeFilter;
+      const currentStatus = params.get("status");
+      const nextStatus = nextStatusFilter === "all" ? null : nextStatusFilter;
+
+      if (
+        currentProvider === nextProvider &&
+        legacyProviderType === null &&
+        currentStatus === nextStatus
+      ) {
+        return;
+      }
+
+      if (nextProvider) {
+        params.set("provider", nextProvider);
+        params.delete("providerType");
+      } else {
+        params.delete("provider");
+        params.delete("providerType");
+      }
+
+      if (nextStatus) {
+        params.set("status", nextStatus);
+      } else {
+        params.delete("status");
+      }
+
+      const query = params.toString();
+      router.replace(query ? `${pathname}?${query}` : pathname, { scroll: false });
+    },
+    [pathname, router, searchParams]
+  );
+
+  const handleTypeFilterChange = useCallback(
+    (value: ProviderType | "all") => {
+      setTypeFilter(value);
+      updateUrlFilters(value, statusFilter);
+    },
+    [statusFilter, updateUrlFilters]
+  );
+
+  const handleStatusFilterChange = useCallback(
+    (value: ProviderStatusFilter) => {
+      setStatusFilter(value);
+      updateUrlFilters(typeFilter, value);
+    },
+    [typeFilter, updateUrlFilters]
+  );
+
+  const resetFilters = useCallback(() => {
+    setTypeFilter("all");
+    setStatusFilter("all");
+    setGroupFilter([]);
+    setCircuitBrokenFilter(false);
+    setSortBy("priority");
+    updateUrlFilters("all", "all");
+  }, [updateUrlFilters]);
 
   // Helper: check if a provider has any circuit open (key-level or endpoint-level)
   const hasAnyCircuitOpen = useCallback(
@@ -378,6 +474,63 @@ export function ProviderManager({
   const allSelected =
     filteredProviders.length > 0 && selectedProviderIds.size === filteredProviders.length;
 
+  const renderTypeFilterSegments = () => (
+    <div className="flex flex-wrap items-center gap-1 rounded-md border bg-muted/30 p-1">
+      <Button
+        type="button"
+        variant={typeFilter === "all" ? "secondary" : "ghost"}
+        size="sm"
+        onClick={() => handleTypeFilterChange("all")}
+        disabled={loading}
+        className="h-7 px-2 text-xs"
+        data-testid="filter-type-segment-all"
+      >
+        {tForm("filterAllProviders")}
+      </Button>
+      {getUserFacingProviderTypes().map((type) => {
+        const config = PROVIDER_TYPE_CONFIG[type];
+        const Icon = config.icon;
+        const typeKey = getProviderTypeTranslationKey(type);
+        const selected = typeFilter === type;
+
+        return (
+          <Button
+            key={type}
+            type="button"
+            variant={selected ? "secondary" : "ghost"}
+            size="sm"
+            onClick={() => handleTypeFilterChange(type)}
+            disabled={loading}
+            className={cn("h-7 gap-1.5 px-2 text-xs", selected && "font-medium")}
+            data-testid={`filter-type-segment-${type}`}
+          >
+            <Icon className={cn("h-3.5 w-3.5", config.iconColor)} />
+            <span>{tTypes(`${typeKey}.label`)}</span>
+          </Button>
+        );
+      })}
+    </div>
+  );
+
+  const renderStatusFilterSegments = () => (
+    <div className="flex flex-wrap items-center gap-1 rounded-md border bg-muted/30 p-1">
+      {STATUS_FILTERS.map((status) => (
+        <Button
+          key={status}
+          type="button"
+          variant={statusFilter === status ? "secondary" : "ghost"}
+          size="sm"
+          onClick={() => handleStatusFilterChange(status)}
+          disabled={loading}
+          className="h-7 px-2 text-xs"
+          data-testid={`filter-status-segment-${status}`}
+        >
+          {tFilter(`status.${status}`)}
+        </Button>
+      ))}
+    </div>
+  );
+
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-2">
@@ -429,10 +582,15 @@ export function ProviderManager({
         <Collapsible open={mobileFilterOpen} onOpenChange={setMobileFilterOpen}>
           <CollapsibleContent className="md:hidden">
             <div className="flex flex-col gap-3 p-3 border rounded-lg bg-muted/30">
-              <ProviderTypeFilter value={typeFilter} onChange={setTypeFilter} disabled={loading} />
+              <ProviderTypeFilter
+                value={typeFilter}
+                onChange={handleTypeFilterChange}
+                disabled={loading}
+              />
+              {renderTypeFilterSegments()}
               <Select
                 value={statusFilter}
-                onValueChange={(value) => setStatusFilter(value as "all" | "active" | "inactive")}
+                onValueChange={(value) => handleStatusFilterChange(value as ProviderStatusFilter)}
                 disabled={loading}
               >
                 <SelectTrigger>
@@ -444,6 +602,7 @@ export function ProviderManager({
                   <SelectItem value="inactive">{tFilter("status.inactive")}</SelectItem>
                 </SelectContent>
               </Select>
+              {renderStatusFilterSegments()}
               <ProviderSortDropdown value={sortBy} onChange={setSortBy} disabled={loading} />
               {allGroups.length > 0 && (
                 <div className="flex flex-wrap gap-2 items-center">
@@ -494,18 +653,7 @@ export function ProviderManager({
                   />
                 </div>
               )}
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => {
-                  setTypeFilter("all");
-                  setStatusFilter("all");
-                  setGroupFilter([]);
-                  setCircuitBrokenFilter(false);
-                  setSortBy("priority");
-                }}
-                className="self-end"
-              >
+              <Button variant="ghost" size="sm" onClick={resetFilters} className="self-end">
                 {tFilter("resetFilters")}
               </Button>
             </div>
@@ -549,11 +697,15 @@ export function ProviderManager({
               </Button>
             </div>
 
-            <ProviderTypeFilter value={typeFilter} onChange={setTypeFilter} disabled={loading} />
+            <ProviderTypeFilter
+              value={typeFilter}
+              onChange={handleTypeFilterChange}
+              disabled={loading}
+            />
 
             <Select
               value={statusFilter}
-              onValueChange={(value) => setStatusFilter(value as "all" | "active" | "inactive")}
+              onValueChange={(value) => handleStatusFilterChange(value as ProviderStatusFilter)}
               disabled={loading}
             >
               <SelectTrigger className="w-full sm:w-[140px]">
@@ -578,6 +730,11 @@ export function ProviderManager({
                 disabled={loading}
               />
             </div>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2">
+            {renderTypeFilterSegments()}
+            {renderStatusFilterSegments()}
           </div>
 
           {/* Group filter */}

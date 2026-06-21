@@ -5,13 +5,31 @@
 import { NextIntlClientProvider } from "next-intl";
 import { type ReactNode, act } from "react";
 import { createRoot } from "react-dom/client";
-import { beforeEach, describe, expect, test, vi } from "vitest";
+import { beforeAll, beforeEach, describe, expect, test, vi } from "vitest";
 import type { ProviderDisplay } from "@/types/provider";
 import enMessages from "../../../../messages/en";
 
 // ---------------------------------------------------------------------------
 // Mocks -- keep them minimal, only stub what provider-manager.tsx touches
 // ---------------------------------------------------------------------------
+
+const navigationMocks = vi.hoisted(() => ({
+  pathname: "/en/dashboard/providers",
+  replace: vi.fn(),
+  searchParams: new URLSearchParams(),
+}));
+
+vi.mock("next/navigation", () => ({
+  usePathname: () => navigationMocks.pathname,
+  useRouter: () => ({
+    replace: (href: string, options?: { scroll?: boolean }) => {
+      navigationMocks.replace(href, options);
+      const query = href.split("?")[1] ?? "";
+      navigationMocks.searchParams = new URLSearchParams(query);
+    },
+  }),
+  useSearchParams: () => navigationMocks.searchParams,
+}));
 
 vi.mock("@/lib/hooks/use-debounce", () => ({
   useDebounce: (value: string, _delay: number) => value,
@@ -169,6 +187,12 @@ function renderWithProviders(node: ReactNode) {
   };
 }
 
+function getRenderedProviderNames(container: HTMLElement) {
+  return Array.from(container.querySelectorAll("[data-testid]"))
+    .filter((node) => /^provider-\d+$/.test(node.getAttribute("data-testid") ?? ""))
+    .map((node) => node.textContent);
+}
+
 // ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
@@ -176,14 +200,17 @@ function renderWithProviders(node: ReactNode) {
 // Lazy-import after mocks are established
 let ProviderManager: typeof import("@/app/[locale]/settings/providers/_components/provider-manager").ProviderManager;
 
-beforeEach(async () => {
+beforeAll(async () => {
+  const mod = await import("@/app/[locale]/settings/providers/_components/provider-manager");
+  ProviderManager = mod.ProviderManager;
+}, 20_000);
+
+beforeEach(() => {
   vi.clearAllMocks();
+  navigationMocks.searchParams = new URLSearchParams();
   while (document.body.firstChild) {
     document.body.removeChild(document.body.firstChild);
   }
-  // Dynamic import to ensure mocks take effect
-  const mod = await import("@/app/[locale]/settings/providers/_components/provider-manager");
-  ProviderManager = mod.ProviderManager;
 });
 
 describe("ProviderManager circuitBrokenCount with endpoint circuits", () => {
@@ -534,12 +561,73 @@ describe("ProviderManager default group filtering", () => {
       defaultFilterButton!.dispatchEvent(new MouseEvent("click", { bubbles: true }));
     });
 
-    const providerNames = Array.from(container.querySelectorAll("[data-testid^='provider-']")).map(
-      (node) => node.textContent
-    );
+    const providerNames = getRenderedProviderNames(container);
     expect(providerNames).toContain("Ungrouped Provider");
     expect(providerNames).toContain("Explicit Default Provider");
     expect(providerNames).not.toContain("Premium Provider");
+
+    unmount();
+  });
+});
+
+describe("ProviderManager quick filter segments", () => {
+  const providers = [
+    makeProvider({ id: 1, name: "Claude Enabled", providerType: "claude", isEnabled: true }),
+    makeProvider({ id: 2, name: "Codex Enabled", providerType: "codex", isEnabled: true }),
+    makeProvider({ id: 3, name: "Codex Disabled", providerType: "codex", isEnabled: false }),
+  ];
+
+  test("initializes provider and status filters from URL params", () => {
+    navigationMocks.searchParams = new URLSearchParams("provider=codex&status=inactive");
+
+    const { unmount, container } = renderWithProviders(
+      <ProviderManager providers={providers} healthStatus={{}} enableMultiProviderTypes={true} />
+    );
+
+    const providerNames = getRenderedProviderNames(container);
+    expect(providerNames).toEqual(["Codex Disabled"]);
+
+    unmount();
+  });
+
+  test("updates filters and URL when quick segments are clicked", () => {
+    const { unmount, container } = renderWithProviders(
+      <ProviderManager providers={providers} healthStatus={{}} enableMultiProviderTypes={true} />
+    );
+
+    const codexSegment = container.querySelector('[data-testid="filter-type-segment-codex"]');
+    expect(codexSegment).toBeTruthy();
+
+    act(() => {
+      codexSegment!.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+
+    expect(navigationMocks.replace).toHaveBeenLastCalledWith(
+      "/en/dashboard/providers?provider=codex",
+      { scroll: false }
+    );
+
+    let providerNames = getRenderedProviderNames(container);
+    expect(providerNames).toContain("Codex Enabled");
+    expect(providerNames).toContain("Codex Disabled");
+    expect(providerNames).not.toContain("Claude Enabled");
+
+    const inactiveSegment = container.querySelector(
+      '[data-testid="filter-status-segment-inactive"]'
+    );
+    expect(inactiveSegment).toBeTruthy();
+
+    act(() => {
+      inactiveSegment!.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+
+    expect(navigationMocks.replace).toHaveBeenLastCalledWith(
+      "/en/dashboard/providers?provider=codex&status=inactive",
+      { scroll: false }
+    );
+
+    providerNames = getRenderedProviderNames(container);
+    expect(providerNames).toEqual(["Codex Disabled"]);
 
     unmount();
   });
