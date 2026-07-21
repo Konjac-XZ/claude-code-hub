@@ -247,6 +247,7 @@ export async function createProvider(providerData: CreateProviderData): Promise<
     faviconUrl: providerData.favicon_url ?? null,
     cacheTtlPreference: providerData.cache_ttl_preference ?? null,
     swapCacheTtlBilling: providerData.swap_cache_ttl_billing ?? false,
+    inputTokensIncludeCacheRead: providerData.input_tokens_include_cache_read ?? false,
     context1mPreference: providerData.context_1m_preference ?? null,
     codexReasoningEffortPreference: providerData.codex_reasoning_effort_preference ?? null,
     codexReasoningSummaryPreference: providerData.codex_reasoning_summary_preference ?? null,
@@ -327,6 +328,7 @@ export async function createProvider(providerData: CreateProviderData): Promise<
         faviconUrl: providers.faviconUrl,
         cacheTtlPreference: providers.cacheTtlPreference,
         swapCacheTtlBilling: providers.swapCacheTtlBilling,
+        inputTokensIncludeCacheRead: providers.inputTokensIncludeCacheRead,
         context1mPreference: providers.context1mPreference,
         codexReasoningEffortPreference: providers.codexReasoningEffortPreference,
         codexReasoningSummaryPreference: providers.codexReasoningSummaryPreference,
@@ -416,6 +418,7 @@ export async function findProviderList(
       faviconUrl: providers.faviconUrl,
       cacheTtlPreference: providers.cacheTtlPreference,
       swapCacheTtlBilling: providers.swapCacheTtlBilling,
+      inputTokensIncludeCacheRead: providers.inputTokensIncludeCacheRead,
       context1mPreference: providers.context1mPreference,
       codexReasoningEffortPreference: providers.codexReasoningEffortPreference,
       codexReasoningSummaryPreference: providers.codexReasoningSummaryPreference,
@@ -505,6 +508,7 @@ export async function findAllProvidersFresh(): Promise<Provider[]> {
       faviconUrl: providers.faviconUrl,
       cacheTtlPreference: providers.cacheTtlPreference,
       swapCacheTtlBilling: providers.swapCacheTtlBilling,
+      inputTokensIncludeCacheRead: providers.inputTokensIncludeCacheRead,
       context1mPreference: providers.context1mPreference,
       codexReasoningEffortPreference: providers.codexReasoningEffortPreference,
       codexReasoningSummaryPreference: providers.codexReasoningSummaryPreference,
@@ -598,6 +602,7 @@ export async function findProviderById(id: number): Promise<Provider | null> {
       faviconUrl: providers.faviconUrl,
       cacheTtlPreference: providers.cacheTtlPreference,
       swapCacheTtlBilling: providers.swapCacheTtlBilling,
+      inputTokensIncludeCacheRead: providers.inputTokensIncludeCacheRead,
       context1mPreference: providers.context1mPreference,
       codexReasoningEffortPreference: providers.codexReasoningEffortPreference,
       codexReasoningSummaryPreference: providers.codexReasoningSummaryPreference,
@@ -718,6 +723,8 @@ export async function updateProvider(
     dbData.cacheTtlPreference = providerData.cache_ttl_preference ?? null;
   if (providerData.swap_cache_ttl_billing !== undefined)
     dbData.swapCacheTtlBilling = providerData.swap_cache_ttl_billing;
+  if (providerData.input_tokens_include_cache_read !== undefined)
+    dbData.inputTokensIncludeCacheRead = providerData.input_tokens_include_cache_read;
   if (providerData.context_1m_preference !== undefined)
     dbData.context1mPreference = providerData.context_1m_preference ?? null;
   if (providerData.codex_reasoning_effort_preference !== undefined)
@@ -849,6 +856,7 @@ export async function updateProvider(
         faviconUrl: providers.faviconUrl,
         cacheTtlPreference: providers.cacheTtlPreference,
         swapCacheTtlBilling: providers.swapCacheTtlBilling,
+        inputTokensIncludeCacheRead: providers.inputTokensIncludeCacheRead,
         context1mPreference: providers.context1mPreference,
         codexReasoningEffortPreference: providers.codexReasoningEffortPreference,
         codexReasoningSummaryPreference: providers.codexReasoningSummaryPreference,

@@ -824,6 +824,21 @@ describe("extractUsageMetrics", () => {
   });
 
   describe("openai-compatible cached_tokens subset normalization", () => {
+    it("subtracts cache reads for a channel configured with subset usage", () => {
+      const response = JSON.stringify({
+        usage: {
+          input_tokens: 12500,
+          output_tokens: 300,
+          cache_read_input_tokens: 10000,
+        },
+      });
+
+      const result = parseUsageFromResponseText(response, "claude", true);
+
+      expect(result.usageMetrics?.input_tokens).toBe(2500);
+      expect(result.usageMetrics?.cache_read_input_tokens).toBe(10000);
+    });
+
     it("should subtract Chat Completions cached_tokens from input_tokens (non-stream)", () => {
       const response = JSON.stringify({
         usage: {

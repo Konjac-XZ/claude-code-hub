@@ -350,6 +350,22 @@ export interface AvailableModelCatalogItem {
 
 export type AvailableModelCatalogScope = "chat" | "all";
 
+const CONVERSATION_CATALOG_MODES = new Set([
+  "chat",
+  "responses",
+  "text_generation",
+  "vision_understanding",
+  "deep_thinking",
+  "omni",
+]);
+
+function isConversationCatalogMode(mode: unknown): boolean {
+  if (typeof mode !== "string" || mode.trim() === "") {
+    return true;
+  }
+  return CONVERSATION_CATALOG_MODES.has(mode);
+}
+
 /**
  * 获取本地价格表中的模型目录。
  * 默认只返回聊天模型；调用方可显式放宽到任意类型。
@@ -365,9 +381,17 @@ export async function getAvailableModelCatalog(options?: {
 
     const scope = options?.scope ?? "chat";
     const allPrices = await findAllLatestPrices();
+    const modeCounts: Record<string, number> = {};
+    for (const price of allPrices) {
+      const mode =
+        typeof price.priceData.mode === "string" && price.priceData.mode.trim()
+          ? price.priceData.mode
+          : "__missing__";
+      modeCounts[mode] = (modeCounts[mode] ?? 0) + 1;
+    }
 
-    return allPrices
-      .filter((price) => scope === "all" || price.priceData.mode === "chat")
+    const catalog = allPrices
+      .filter((price) => scope === "all" || isConversationCatalogMode(price.priceData.mode))
       .sort((left, right) => {
         const timeDelta = right.updatedAt.getTime() - left.updatedAt.getTime();
         if (timeDelta !== 0) {
@@ -384,6 +408,22 @@ export async function getAvailableModelCatalog(options?: {
             : null,
         updatedAt: price.updatedAt.toISOString(),
       }));
+
+    logger.debug("[ModelPriceCatalog] loaded available model catalog", {
+      scope,
+      totalCount: allPrices.length,
+      returnedCount: catalog.length,
+      modeCounts,
+    });
+
+    if (scope === "chat" && allPrices.length > 0 && catalog.length === 0) {
+      logger.warn("[ModelPriceCatalog] local catalog is empty after mode filtering", {
+        totalCount: allPrices.length,
+        modeCounts,
+      });
+    }
+
+    return catalog;
   } catch (error) {
     logger.error("获取可用模型目录失败:", error);
     return [];

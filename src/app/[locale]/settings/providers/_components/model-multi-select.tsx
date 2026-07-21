@@ -119,7 +119,6 @@ export function ModelMultiSelect({
   catalogScope = "chat",
 }: ModelMultiSelectProps) {
   const t = useTranslations("settings.providers.form.modelSelect");
-  const tPrices = useTranslations("settings.prices");
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(true);
   const [modelSource, setModelSource] = useState<ModelSource>("loading");
@@ -208,49 +207,66 @@ export function ModelMultiSelect({
     setModelSource("loading");
     setFallbackNotice(null);
 
+    const showFallbackNotice = () => {
+      if (requestId === requestIdRef.current) {
+        setFallbackNotice(t("fallbackNotice"));
+      }
+    };
+
     try {
       let resolvedKey = apiKey?.trim() || "";
-      if ((!resolvedKey || resolvedKey.includes("***")) && providerId) {
-        const keyResult = await getUnmaskedProviderKey(providerId);
-        if (keyResult.ok && keyResult.data?.key) {
-          resolvedKey = keyResult.data.key;
+
+      try {
+        if ((!resolvedKey || resolvedKey.includes("***")) && providerId) {
+          const keyResult = await getUnmaskedProviderKey(providerId);
+          if (keyResult.ok && keyResult.data?.key) {
+            resolvedKey = keyResult.data.key;
+          }
         }
-      }
 
-      if (providerUrl && resolvedKey) {
-        const upstreamResult = await fetchUpstreamModels({
-          providerUrl,
-          apiKey: resolvedKey,
-          providerType,
-          proxyUrl,
-          proxyFallbackToDirect,
-        });
+        if (providerUrl && resolvedKey) {
+          const upstreamResult = await fetchUpstreamModels({
+            providerUrl,
+            apiKey: resolvedKey,
+            providerType,
+            proxyUrl,
+            proxyFallbackToDirect,
+          });
 
-        if (upstreamResult.ok && upstreamResult.data?.models?.length) {
-          if (requestId !== requestIdRef.current) {
+          if (upstreamResult.ok && upstreamResult.data?.models?.length) {
+            if (requestId !== requestIdRef.current) {
+              return;
+            }
+
+            const upstreamModels = upstreamResult.data.models.map((modelName) =>
+              buildLocalOption({
+                modelName,
+                vendor: null,
+                litellmProvider: null,
+                updatedAt: "",
+              })
+            );
+            setAvailableModels(upstreamModels);
+            setModelSource("upstream");
+            setProviderFilter("__all__");
             return;
           }
 
-          const upstreamModels = upstreamResult.data.models.map((modelName) =>
-            buildLocalOption({
-              modelName,
-              vendor: null,
-              litellmProvider: null,
-              updatedAt: "",
-            })
-          );
-          setAvailableModels(upstreamModels);
-          setModelSource("upstream");
-          setProviderFilter("__all__");
-          return;
+          if (!upstreamResult.ok) {
+            showFallbackNotice();
+          }
         }
-
-        if (!upstreamResult.ok && requestId === requestIdRef.current) {
-          setFallbackNotice(t("fallbackNotice"));
-        }
+      } catch {
+        showFallbackNotice();
       }
 
-      const localCatalog = await getAvailableModelCatalog({ scope: catalogScope });
+      let localCatalog: AvailableModelCatalogItem[] = [];
+      try {
+        localCatalog = await getAvailableModelCatalog({ scope: catalogScope });
+      } catch (error) {
+        console.warn("[ModelMultiSelect] Failed to load local model catalog", error);
+        localCatalog = [];
+      }
       if (requestId !== requestIdRef.current) {
         return;
       }

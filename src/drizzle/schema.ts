@@ -317,6 +317,9 @@ export const providers = pgTable('providers', {
   // Cache TTL billing swap: when true, invert 1h<->5m for cost calculation only
   swapCacheTtlBilling: boolean('swap_cache_ttl_billing').notNull().default(false),
 
+  // Some upstreams report cache-read tokens as part of input tokens.
+  inputTokensIncludeCacheRead: boolean('input_tokens_include_cache_read').notNull().default(false),
+
   // 1M Context Window 偏好配置（仅对 Anthropic 类型供应商有效）
   // - 'inherit' (默认): 遵循客户端请求，客户端带 1M header 则启用
   // - 'force_enable': 强制启用 1M 上下文（仅对支持的模型生效）

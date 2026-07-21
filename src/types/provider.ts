@@ -405,6 +405,9 @@ export interface Provider {
   // Cache TTL billing swap: invert 1h<->5m for cost calculation
   swapCacheTtlBilling: boolean;
 
+  // Whether upstream input tokens include cache-read tokens.
+  inputTokensIncludeCacheRead?: boolean;
+
   // 1M Context Window 偏好配置（仅对 Anthropic 类型供应商有效）
   context1mPreference: string | null;
 
@@ -502,6 +505,7 @@ export interface ProviderDisplay {
   faviconUrl: string | null;
   cacheTtlPreference: CacheTtlPreference | null;
   swapCacheTtlBilling: boolean;
+  inputTokensIncludeCacheRead?: boolean;
   context1mPreference: string | null;
   codexReasoningEffortPreference: CodexReasoningEffortPreference | null;
   codexReasoningSummaryPreference: CodexReasoningSummaryPreference | null;
@@ -622,6 +626,7 @@ export interface CreateProviderData {
   favicon_url?: string | null;
   cache_ttl_preference?: CacheTtlPreference | null;
   swap_cache_ttl_billing?: boolean;
+  input_tokens_include_cache_read?: boolean;
   context_1m_preference?: string | null;
   codex_reasoning_effort_preference?: CodexReasoningEffortPreference | null;
   codex_reasoning_summary_preference?: CodexReasoningSummaryPreference | null;
@@ -707,6 +712,7 @@ export interface UpdateProviderData {
   favicon_url?: string | null;
   cache_ttl_preference?: CacheTtlPreference | null;
   swap_cache_ttl_billing?: boolean;
+  input_tokens_include_cache_read?: boolean;
   context_1m_preference?: string | null;
   codex_reasoning_effort_preference?: CodexReasoningEffortPreference | null;
   codex_reasoning_summary_preference?: CodexReasoningSummaryPreference | null;

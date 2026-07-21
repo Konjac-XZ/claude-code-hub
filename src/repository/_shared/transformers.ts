@@ -145,6 +145,7 @@ export function toProvider(dbProvider: any): Provider {
     faviconUrl: dbProvider?.faviconUrl ?? null,
     cacheTtlPreference: dbProvider?.cacheTtlPreference ?? null,
     swapCacheTtlBilling: dbProvider?.swapCacheTtlBilling ?? false,
+    inputTokensIncludeCacheRead: dbProvider?.inputTokensIncludeCacheRead ?? false,
     context1mPreference: dbProvider?.context1mPreference ?? null,
     codexReasoningEffortPreference: dbProvider?.codexReasoningEffortPreference ?? null,
     codexReasoningSummaryPreference: dbProvider?.codexReasoningSummaryPreference ?? null,

@@ -940,7 +940,11 @@ async function finalizeDeferredStreamingFinalizationIfNeeded(
       return false;
     }
 
-    const { usageMetrics } = parseUsageFromResponseText(allContent, provider?.providerType);
+    const { usageMetrics } = parseUsageFromResponseText(
+      allContent,
+      provider?.providerType,
+      provider?.inputTokensIncludeCacheRead
+    );
     clientAbortGateUsage = { usageMetrics, providerType: provider?.providerType };
     return hasPositiveBillableTokens(usageMetrics);
   })();
@@ -1673,7 +1677,11 @@ export class ProxyResponseHandler {
         }
         let usageMetrics: UsageMetrics | null = null;
 
-        const usageResult = parseUsageFromResponseText(responseText, provider.providerType);
+        const usageResult = parseUsageFromResponseText(
+          responseText,
+          provider.providerType,
+          provider.inputTokensIncludeCacheRead
+        );
         usageMetrics = usageResult.usageMetrics;
         const actualServiceTier = parseServiceTierFromResponseText(responseText);
         const codexPriorityBillingDecision = await resolveCodexPriorityBillingDecision(
@@ -2779,7 +2787,11 @@ export class ProxyResponseHandler {
         const usageResult =
           finalized.clientAbortGateUsage?.providerType === provider.providerType
             ? { usageMetrics: finalized.clientAbortGateUsage.usageMetrics }
-            : parseUsageFromResponseText(allContent, provider.providerType);
+            : parseUsageFromResponseText(
+                allContent,
+                provider.providerType,
+                provider.inputTokensIncludeCacheRead
+              );
         usageForCost = usageResult.usageMetrics;
 
         const actualServiceTier = parseServiceTierFromResponseText(allContent);
@@ -3605,7 +3617,8 @@ export function extractUsageMetrics(value: unknown): UsageMetrics | null {
 
 export function parseUsageFromResponseText(
   responseText: string,
-  providerType: string | null | undefined
+  providerType: string | null | undefined,
+  inputTokensIncludeCacheRead = false
 ): {
   usageRecord: Record<string, unknown> | null;
   usageMetrics: UsageMetrics | null;
@@ -3628,7 +3641,7 @@ export function parseUsageFromResponseText(
     }
 
     usageRecord = value as Record<string, unknown>;
-    usageMetrics = adjustUsageForProviderType(extracted, providerType);
+    usageMetrics = adjustUsageForProviderType(extracted, providerType, inputTokensIncludeCacheRead);
 
     logger.debug("[ResponseHandler] Parsed usage from response", {
       source,
@@ -3817,7 +3830,11 @@ export function parseUsageFromResponseText(
     })();
 
     if (mergedClaudeUsage) {
-      usageMetrics = adjustUsageForProviderType(mergedClaudeUsage, providerType);
+      usageMetrics = adjustUsageForProviderType(
+        mergedClaudeUsage,
+        providerType,
+        inputTokensIncludeCacheRead
+      );
       usageRecord = mergedClaudeUsage as unknown as Record<string, unknown>;
       logger.debug("[ResponseHandler] Final merged usage from Claude SSE", {
         providerType,
@@ -3828,7 +3845,11 @@ export function parseUsageFromResponseText(
     // Gemini SSE 处理：使用最后一个有效的 usageMetadata
     // 仅当 Claude SSE 没有提供 usage 且 applyUsageValue 也没有找到时才使用
     if (!usageMetrics && lastGeminiUsage) {
-      usageMetrics = adjustUsageForProviderType(lastGeminiUsage, providerType);
+      usageMetrics = adjustUsageForProviderType(
+        lastGeminiUsage,
+        providerType,
+        inputTokensIncludeCacheRead
+      );
       usageRecord = lastGeminiUsageRecord;
       logger.debug("[ResponseHandler] Final usage from Gemini SSE (last event)", {
         providerType,
@@ -3840,17 +3861,21 @@ export function parseUsageFromResponseText(
   return { usageRecord, usageMetrics };
 }
 
-// Provider types whose upstream APIs report cached tokens as a subset of
-// input_tokens (OpenAI semantics) rather than as a disjoint bucket (Anthropic
-// semantics). For these, subtract cache_read_input_tokens from input_tokens
-// before persistence so internal cost buckets are not double-counted.
+// Provider types and per-provider settings whose upstream APIs report cached
+// tokens as a subset of input_tokens rather than as a disjoint bucket. For
+// these, subtract cache_read_input_tokens before persistence so internal cost
+// buckets are not double-counted.
 const PROVIDERS_WITH_CACHE_SUBSET_USAGE = new Set<string>(["codex", "openai-compatible"]);
 
 function adjustUsageForProviderType(
   usage: UsageMetrics,
-  providerType: string | null | undefined
+  providerType: string | null | undefined,
+  inputTokensIncludeCacheRead: boolean
 ): UsageMetrics {
-  if (!providerType || !PROVIDERS_WITH_CACHE_SUBSET_USAGE.has(providerType)) {
+  if (
+    (!providerType || !PROVIDERS_WITH_CACHE_SUBSET_USAGE.has(providerType)) &&
+    !inputTokensIncludeCacheRead
+  ) {
     return usage;
   }
 
@@ -3868,6 +3893,7 @@ function adjustUsageForProviderType(
 
   logger.debug("[UsageMetrics] Adjusted input tokens to exclude cached tokens", {
     providerType,
+    inputTokensIncludeCacheRead,
     originalInputTokens: inputTokens,
     cachedTokens,
     adjustedInputTokens: adjustedInput,
@@ -4172,7 +4198,11 @@ export async function finalizeHedgeLoserBilling(params: {
       return null;
     }
 
-    const { usageMetrics } = parseUsageFromResponseText(allContent, provider.providerType);
+    const { usageMetrics } = parseUsageFromResponseText(
+      allContent,
+      provider.providerType,
+      provider.inputTokensIncludeCacheRead
+    );
     let usageForCost = usageMetrics;
     if (usageForCost) {
       usageForCost = normalizeUsageWithSwap(
@@ -4334,7 +4364,11 @@ export async function finalizeRequestStats(
   // the binding/chain) so the winner cost write uses the loser-sum-aware mode and does not
   // clobber concurrently-billed loser increments.
   const winnerLoserAware = peekDeferredStreamingFinalization(session)?.billHedgeLosers === true;
-  const { usageMetrics } = parseUsageFromResponseText(responseText, provider.providerType);
+  const { usageMetrics } = parseUsageFromResponseText(
+    responseText,
+    provider.providerType,
+    provider.inputTokensIncludeCacheRead
+  );
   const actualServiceTier = parseServiceTierFromResponseText(responseText);
   const codexPriorityBillingDecision = await resolveCodexPriorityBillingDecision(
     session,

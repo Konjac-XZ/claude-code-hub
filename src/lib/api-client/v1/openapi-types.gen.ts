@@ -4418,6 +4418,8 @@ export interface operations {
                             cacheTtlPreference: string | null;
                             /** @description Whether cache TTL billing swap is enabled. */
                             swapCacheTtlBilling: boolean;
+                            /** @description Whether input tokens include cache-read tokens. */
+                            inputTokensIncludeCacheRead: boolean;
                             /** @description 1M context preference. */
                             context1mPreference: string | null;
                             /** @description Codex reasoning effort. */
@@ -4745,6 +4747,8 @@ export interface operations {
                     cache_ttl_preference?: string;
                     /** @description Whether cache TTL billing swap is enabled. */
                     swap_cache_ttl_billing?: boolean;
+                    /** @description Whether input tokens include cache-read tokens. */
+                    input_tokens_include_cache_read?: boolean;
                     /** @description 1M context preference. */
                     context_1m_preference?: string | null;
                     /** @description Codex reasoning effort. */
@@ -4883,6 +4887,8 @@ export interface operations {
                         cacheTtlPreference: string | null;
                         /** @description Whether cache TTL billing swap is enabled. */
                         swapCacheTtlBilling: boolean;
+                        /** @description Whether input tokens include cache-read tokens. */
+                        inputTokensIncludeCacheRead: boolean;
                         /** @description 1M context preference. */
                         context1mPreference: string | null;
                         /** @description Codex reasoning effort. */
@@ -5205,6 +5211,8 @@ export interface operations {
                         cacheTtlPreference: string | null;
                         /** @description Whether cache TTL billing swap is enabled. */
                         swapCacheTtlBilling: boolean;
+                        /** @description Whether input tokens include cache-read tokens. */
+                        inputTokensIncludeCacheRead: boolean;
                         /** @description 1M context preference. */
                         context1mPreference: string | null;
                         /** @description Codex reasoning effort. */
@@ -5707,6 +5715,8 @@ export interface operations {
                     cache_ttl_preference?: string;
                     /** @description Whether cache TTL billing swap is enabled. */
                     swap_cache_ttl_billing?: boolean;
+                    /** @description Whether input tokens include cache-read tokens. */
+                    input_tokens_include_cache_read?: boolean;
                     /** @description 1M context preference. */
                     context_1m_preference?: string | null;
                     /** @description Codex reasoning effort. */
@@ -5851,6 +5861,8 @@ export interface operations {
                         cacheTtlPreference: string | null;
                         /** @description Whether cache TTL billing swap is enabled. */
                         swapCacheTtlBilling: boolean;
+                        /** @description Whether input tokens include cache-read tokens. */
+                        inputTokensIncludeCacheRead: boolean;
                         /** @description 1M context preference. */
                         context1mPreference: string | null;
                         /** @description Codex reasoning effort. */

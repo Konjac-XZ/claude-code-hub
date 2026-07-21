@@ -146,6 +146,10 @@
       "label": "Cache TTL 计费互换",
       "desc": "反转传入数据的缓存 TTL：1h 令牌视为 5 分钟，反之亦然。影响标记、成本及所有存储指标。"
     },
+    "inputTokensIncludeCacheRead": {
+      "label": "输入 Token 包含缓存命中",
+      "desc": "开启后，从输入 Token 中扣除缓存命中 Token，避免重复计费。"
+    },
     "customHeaders": {
       "label": "自定义请求头（JSON）",
       "desc": "静态请求头会合并到出站请求；不会覆盖鉴权头或最终 request filter。",

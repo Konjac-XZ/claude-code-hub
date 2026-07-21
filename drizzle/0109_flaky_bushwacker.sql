@@ -1,0 +1,1 @@
+ALTER TABLE "providers" ADD COLUMN "input_tokens_include_cache_read" boolean DEFAULT false NOT NULL;

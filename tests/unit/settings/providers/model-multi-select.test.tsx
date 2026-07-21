@@ -358,6 +358,33 @@ describe("ModelMultiSelect", () => {
     unmount();
   });
 
+  test("falls back silently when the upstream returns an empty model list", async () => {
+    const messages = loadMessages();
+    providerActionMocks.fetchUpstreamModels.mockResolvedValueOnce({
+      ok: true,
+      data: { models: [], source: "upstream" },
+    });
+
+    const { unmount } = render(
+      <NextIntlClientProvider locale="en" messages={messages} timeZone="UTC">
+        <ModelMultiSelect
+          providerType="claude"
+          providerUrl="https://api.example.com"
+          apiKey="sk-test"
+          selectedModels={[]}
+          onChange={vi.fn()}
+        />
+      </NextIntlClientProvider>
+    );
+
+    await openPicker();
+
+    expect(modelPricesActionMocks.getAvailableModelCatalog).toHaveBeenCalledWith({ scope: "chat" });
+    expect(document.body.textContent).not.toContain("The upstream model list is unavailable");
+
+    unmount();
+  });
+
   test("取消一个 mixed-case exact 模型时不会连带移除另一个", async () => {
     const messages = loadMessages();
     const onChange = vi.fn();

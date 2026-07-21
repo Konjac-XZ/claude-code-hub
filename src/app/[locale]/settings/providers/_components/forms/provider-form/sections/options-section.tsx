@@ -105,6 +105,26 @@ export function OptionsSection({ subSectionRefs }: OptionsSectionProps) {
                 />
               </ToggleRow>
 
+              {!isBatch && (
+                <ToggleRow
+                  label={t("sections.routing.inputTokensIncludeCacheRead.label")}
+                  description={t("sections.routing.inputTokensIncludeCacheRead.desc")}
+                >
+                  <Switch
+                    id={
+                      isEdit
+                        ? "edit-input-tokens-include-cache-read"
+                        : "input-tokens-include-cache-read"
+                    }
+                    checked={state.routing.inputTokensIncludeCacheRead}
+                    onCheckedChange={(checked) =>
+                      dispatch({ type: "SET_INPUT_TOKENS_INCLUDE_CACHE_READ", payload: checked })
+                    }
+                    disabled={state.ui.isPending}
+                  />
+                </ToggleRow>
+              )}
+
               {/* Static Custom Request Headers - persistent provider config (not exposed in batch mode) */}
               {!isBatch && (
                 <SmartInputWrapper

@@ -190,6 +190,10 @@
       "label": "Cache TTL 計費互換",
       "desc": "反轉傳入資料的快取 TTL：1h 令牌視為 5 分鐘，反之亦然。影響標記、成本及所有儲存指標。"
     },
+    "inputTokensIncludeCacheRead": {
+      "label": "輸入 Token 包含快取命中",
+      "desc": "開啟後，從輸入 Token 扣除快取命中 Token，避免重複計費。"
+    },
     "customHeaders": {
       "label": "自訂請求標頭（JSON）",
       "desc": "靜態請求標頭會合併到出站請求；不會覆蓋鑑權標頭或最終 request filter。",

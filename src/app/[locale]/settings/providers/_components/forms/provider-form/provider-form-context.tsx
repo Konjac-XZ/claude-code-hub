@@ -195,6 +195,7 @@ export function createInitialState(
           analysis.routing.swapCacheTtlBilling.status === "uniform"
             ? analysis.routing.swapCacheTtlBilling.value
             : false,
+        inputTokensIncludeCacheRead: false,
         codexReasoningEffortPreference:
           analysis.routing.codexReasoningEffortPreference.status === "uniform"
             ? analysis.routing.codexReasoningEffortPreference.value
@@ -361,6 +362,7 @@ export function createInitialState(
         costMultiplier: 1.0,
         cacheTtlPreference: "inherit",
         swapCacheTtlBilling: false,
+        inputTokensIncludeCacheRead: false,
         codexReasoningEffortPreference: "inherit",
         codexReasoningSummaryPreference: "inherit",
         codexTextVerbosityPreference: "inherit",
@@ -439,6 +441,7 @@ export function createInitialState(
       costMultiplier: sourceProvider?.costMultiplier ?? 1.0,
       cacheTtlPreference: sourceProvider?.cacheTtlPreference ?? "inherit",
       swapCacheTtlBilling: sourceProvider?.swapCacheTtlBilling ?? false,
+      inputTokensIncludeCacheRead: sourceProvider?.inputTokensIncludeCacheRead ?? false,
       codexReasoningEffortPreference: sourceProvider?.codexReasoningEffortPreference ?? "inherit",
       codexReasoningSummaryPreference: sourceProvider?.codexReasoningSummaryPreference ?? "inherit",
       codexTextVerbosityPreference: sourceProvider?.codexTextVerbosityPreference ?? "inherit",
@@ -556,6 +559,11 @@ export function providerFormReducer(
       return { ...state, routing: { ...state.routing, cacheTtlPreference: action.payload } };
     case "SET_SWAP_CACHE_TTL_BILLING":
       return { ...state, routing: { ...state.routing, swapCacheTtlBilling: action.payload } };
+    case "SET_INPUT_TOKENS_INCLUDE_CACHE_READ":
+      return {
+        ...state,
+        routing: { ...state.routing, inputTokensIncludeCacheRead: action.payload },
+      };
     case "SET_CODEX_REASONING_EFFORT":
       return {
         ...state,

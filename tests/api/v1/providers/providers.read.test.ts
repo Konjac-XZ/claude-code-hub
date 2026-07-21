@@ -136,6 +136,7 @@ function provider(overrides: Partial<ProviderDisplay> = {}): ProviderDisplay {
     faviconUrl: null,
     cacheTtlPreference: "inherit",
     swapCacheTtlBilling: false,
+    inputTokensIncludeCacheRead: false,
     context1mPreference: null,
     codexReasoningEffortPreference: null,
     codexReasoningSummaryPreference: null,
@@ -609,13 +610,19 @@ describe("v1 providers read endpoints", () => {
       method: "PATCH",
       pathname: "/api/v1/providers/1",
       headers: { Authorization: "Bearer admin-token" },
-      body: { name: "Updated provider" },
+      body: {
+        name: "Updated provider",
+        input_tokens_include_cache_read: true,
+      },
     });
     expect(updated.response.status).toBe(200);
     expect(updated.response.headers.get("X-CCH-Undo-Token")).toBe("undo-1");
     expect(updated.response.headers.get("X-CCH-Operation-Id")).toBe("op-1");
     expect(updated.json).toMatchObject({ id: 1, name: "Updated provider" });
-    expect(editProviderMock).toHaveBeenCalledWith(1, { name: "Updated provider" });
+    expect(editProviderMock).toHaveBeenCalledWith(1, {
+      name: "Updated provider",
+      input_tokens_include_cache_read: true,
+    });
 
     const deleted = await callV1Route({
       method: "DELETE",

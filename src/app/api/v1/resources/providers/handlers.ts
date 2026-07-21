@@ -652,6 +652,7 @@ function sanitizeProvider(
     faviconUrl: provider.faviconUrl,
     cacheTtlPreference: provider.cacheTtlPreference,
     swapCacheTtlBilling: provider.swapCacheTtlBilling,
+    inputTokensIncludeCacheRead: provider.inputTokensIncludeCacheRead ?? false,
     context1mPreference: provider.context1mPreference,
     codexReasoningEffortPreference: provider.codexReasoningEffortPreference,
     codexReasoningSummaryPreference: provider.codexReasoningSummaryPreference,

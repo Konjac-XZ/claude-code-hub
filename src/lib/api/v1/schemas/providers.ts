@@ -103,6 +103,9 @@ export const ProviderSummarySchema = z
     faviconUrl: NullableStringSchema.describe("Provider favicon URL."),
     cacheTtlPreference: z.string().nullable().describe("Cache TTL preference."),
     swapCacheTtlBilling: z.boolean().describe("Whether cache TTL billing swap is enabled."),
+    inputTokensIncludeCacheRead: z
+      .boolean()
+      .describe("Whether input tokens include cache-read tokens."),
     context1mPreference: z.string().nullable().describe("1M context preference."),
     codexReasoningEffortPreference: z.string().nullable().describe("Codex reasoning effort."),
     codexReasoningSummaryPreference: z.string().nullable().describe("Codex reasoning summary."),
@@ -476,6 +479,10 @@ export const ProviderCreateSchema = z
       .boolean()
       .optional()
       .describe("Whether cache TTL billing swap is enabled."),
+    input_tokens_include_cache_read: z
+      .boolean()
+      .optional()
+      .describe("Whether input tokens include cache-read tokens."),
     context_1m_preference: z.string().nullable().optional().describe("1M context preference."),
     codex_reasoning_effort_preference: z.string().optional().describe("Codex reasoning effort."),
     codex_reasoning_summary_preference: z.string().optional().describe("Codex reasoning summary."),

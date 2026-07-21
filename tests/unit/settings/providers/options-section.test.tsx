@@ -107,6 +107,7 @@ function createMockState(
       costMultiplier: 1,
       cacheTtlPreference: "inherit",
       swapCacheTtlBilling: false,
+      inputTokensIncludeCacheRead: false,
       codexReasoningEffortPreference: "inherit",
       codexReasoningSummaryPreference: "inherit",
       codexTextVerbosityPreference: "inherit",
@@ -230,6 +231,20 @@ describe("OptionsSection", () => {
       const { unmount } = renderSection();
 
       expect(document.getElementById("swap-cache-ttl-billing")).toBeTruthy();
+
+      unmount();
+    });
+
+    it("updates cache-read inclusion when its toggle is changed", () => {
+      const { unmount } = renderSection();
+
+      const toggle = document.getElementById("input-tokens-include-cache-read");
+      act(() => toggle?.dispatchEvent(new MouseEvent("click", { bubbles: true })));
+
+      expect(mockDispatch).toHaveBeenCalledWith({
+        type: "SET_INPUT_TOKENS_INCLUDE_CACHE_READ",
+        payload: true,
+      });
 
       unmount();
     });
@@ -506,7 +521,7 @@ describe("OptionsSection", () => {
         container.querySelectorAll('[data-testid="switch"]')
       ) as HTMLButtonElement[];
 
-      expect(switches).toHaveLength(4);
+      expect(switches).toHaveLength(5);
       for (const toggle of switches) {
         expect(toggle.hasAttribute("disabled")).toBe(true);
       }

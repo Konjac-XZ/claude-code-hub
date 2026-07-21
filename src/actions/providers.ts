@@ -366,6 +366,7 @@ export async function getProviders(): Promise<ProviderDisplay[]> {
         faviconUrl: provider.faviconUrl,
         cacheTtlPreference: provider.cacheTtlPreference,
         swapCacheTtlBilling: provider.swapCacheTtlBilling,
+        inputTokensIncludeCacheRead: provider.inputTokensIncludeCacheRead ?? false,
         context1mPreference: provider.context1mPreference,
         codexReasoningEffortPreference: provider.codexReasoningEffortPreference,
         codexReasoningSummaryPreference: provider.codexReasoningSummaryPreference,
@@ -551,6 +552,7 @@ export async function addProvider(data: {
   limit_total_usd?: number | null;
   limit_concurrent_sessions?: number | null;
   cache_ttl_preference?: CacheTtlPreference | null;
+  input_tokens_include_cache_read?: boolean;
   context_1m_preference?: string | null;
   codex_reasoning_effort_preference?: CodexReasoningEffortPreference | null;
   codex_reasoning_summary_preference?: CodexReasoningSummaryPreference | null;
@@ -768,6 +770,7 @@ export async function editProvider(
     limit_concurrent_sessions?: number | null;
     cache_ttl_preference?: "inherit" | "5m" | "1h";
     swap_cache_ttl_billing?: boolean;
+    input_tokens_include_cache_read?: boolean;
     context_1m_preference?: string | null;
     codex_reasoning_effort_preference?: CodexReasoningEffortPreference | null;
     codex_reasoning_summary_preference?: CodexReasoningSummaryPreference | null;
