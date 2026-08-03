@@ -1,5 +1,6 @@
 "use server";
 
+import { createHash } from "node:crypto";
 import { eq } from "drizzle-orm";
 import { z } from "zod";
 import { GeminiAuth } from "@/app/v1/_lib/gemini/auth";
@@ -7,7 +8,7 @@ import { resolveAnthropicAuthHeaders as resolveAnthropicAuthHeaderSet } from "@/
 import { isClientAbortError } from "@/app/v1/_lib/proxy/errors";
 import { buildProxyUrl } from "@/app/v1/_lib/url";
 import { db } from "@/drizzle/db";
-import { providers as providersTable } from "@/drizzle/schema";
+import { type ProviderBatchApplyLedgerResult, providers as providersTable } from "@/drizzle/schema";
 import { normalizeAllowedModelRules } from "@/lib/allowed-model-rules";
 import { redactUrlCredentials } from "@/lib/api/v1/_shared/redaction";
 import { emitActionAudit } from "@/lib/audit/emit";
@@ -25,7 +26,10 @@ import { PROVIDER_GROUP, PROVIDER_TIMEOUT_DEFAULTS } from "@/lib/constants/provi
 import { normalizeCustomHeadersRecord } from "@/lib/custom-headers";
 import { logger } from "@/lib/logger";
 import { PROVIDER_ALLOWED_MODEL_RULE_INPUT_LIST_SCHEMA } from "@/lib/provider-allowed-model-schema";
-import { PROVIDER_BATCH_PATCH_ERROR_CODES } from "@/lib/provider-batch-patch-error-codes";
+import {
+  PROVIDER_BATCH_PATCH_ERROR_CODES,
+  SENSITIVE_PROVIDER_BATCH_UNDO_KEYS,
+} from "@/lib/provider-batch-patch-error-codes";
 import { PROVIDER_MODEL_REDIRECT_RULE_LIST_SCHEMA } from "@/lib/provider-model-redirect-schema";
 import { normalizeProviderModelRedirectRules } from "@/lib/provider-model-redirects";
 import {
@@ -64,14 +68,20 @@ import { validateProviderUrlForConnectivity } from "@/lib/validation/provider-ur
 import { CreateProviderSchema, UpdateProviderSchema } from "@/lib/validation/schemas";
 import { restoreProvidersBatch } from "@/repository";
 import {
+  applyProviderBatchOperationIfUnchanged,
   type BatchProviderUpdates,
   createProvider,
   deleteProvider,
   findAllProviders,
   findAllProvidersFresh,
+  findProviderBatchApplyOperation,
+  findProviderBatchUndoOperation,
   findProviderById,
   getProviderStatistics,
+  type ProviderBatchExpectedPreimage,
+  type ProviderBatchUpdateGroup,
   resetProviderTotalCostResetAt,
+  undoProviderBatchOperation,
   updateProvider,
   updateProviderPrioritiesBatch,
   updateProvidersBatch,
@@ -252,7 +262,7 @@ export async function getProviders(): Promise<ProviderDisplay[]> {
       role: session?.user.role,
     });
 
-    if (!session || session.user.role !== "admin") {
+    if (session?.user.role !== "admin") {
       logger.trace("getProviders:unauthorized", {
         hasSession: !!session,
         role: session?.user.role,
@@ -411,7 +421,7 @@ export async function getProviders(): Promise<ProviderDisplay[]> {
 export async function getProviderStatisticsAsync(): Promise<ProviderStatisticsMap> {
   try {
     const session = await getSession();
-    if (!session || session.user.role !== "admin") return {};
+    if (session?.user.role !== "admin") return {};
 
     const statistics = await getProviderStatistics();
 
@@ -583,7 +593,7 @@ export async function addProvider(data: {
 }): Promise<ActionResult<{ id: number }>> {
   try {
     const session = await getSession();
-    if (!session || session.user.role !== "admin") {
+    if (session?.user.role !== "admin") {
       return { ok: false, error: "无权限执行此操作" };
     }
 
@@ -802,7 +812,7 @@ export async function editProvider(
 ): Promise<ActionResult<EditProviderResult>> {
   try {
     const session = await getSession();
-    if (!session || session.user.role !== "admin") {
+    if (session?.user.role !== "admin") {
       return { ok: false, error: "无权限执行此操作" };
     }
 
@@ -959,7 +969,7 @@ export async function editProvider(
       preimage: {
         [providerId]: preimageFields,
       },
-      patch: EMPTY_PROVIDER_BATCH_PATCH,
+      durable: false,
     });
 
     emitActionAudit({
@@ -1000,7 +1010,7 @@ export async function removeProvider(
 ): Promise<ActionResult<RemoveProviderResult>> {
   try {
     const session = await getSession();
-    if (!session || session.user.role !== "admin") {
+    if (session?.user.role !== "admin") {
       return { ok: false, error: "无权限执行此操作" };
     }
 
@@ -1087,7 +1097,7 @@ export async function autoSortProviderPriority(args: {
 }): Promise<ActionResult<AutoSortResult>> {
   try {
     const session = await getSession();
-    if (!session || session.user.role !== "admin") {
+    if (session?.user.role !== "admin") {
       return { ok: false, error: "无权限执行此操作" };
     }
 
@@ -1215,7 +1225,7 @@ export async function autoSortProviderPriority(args: {
 export async function getProvidersHealthStatus() {
   try {
     const session = await getSession();
-    if (!session || session.user.role !== "admin") {
+    if (session?.user.role !== "admin") {
       return {};
     }
 
@@ -1263,7 +1273,7 @@ export async function getProvidersHealthStatus() {
 export async function resetProviderCircuit(providerId: number): Promise<ActionResult> {
   try {
     const session = await getSession();
-    if (!session || session.user.role !== "admin") {
+    if (session?.user.role !== "admin") {
       return { ok: false, error: "无权限执行此操作" };
     }
 
@@ -1286,7 +1296,7 @@ export async function resetProviderCircuit(providerId: number): Promise<ActionRe
 export async function resetProviderTotalUsage(providerId: number): Promise<ActionResult> {
   try {
     const session = await getSession();
-    if (!session || session.user.role !== "admin") {
+    if (session?.user.role !== "admin") {
       return { ok: false, error: "无权限执行此操作" };
     }
 
@@ -1422,8 +1432,8 @@ interface ProviderBatchPatchPreviewSnapshot {
   patchSerialized: string;
   changedFields: ProviderBatchPatchField[];
   rows: ProviderBatchPreviewRow[];
-  applied: boolean;
-  appliedResultByIdempotencyKey: Record<string, ApplyProviderBatchPatchResult>;
+  providerTypes: Record<number, ProviderType>;
+  providerEnabled: Record<number, boolean>;
 }
 
 interface ProviderPatchUndoSnapshot {
@@ -1431,7 +1441,7 @@ interface ProviderPatchUndoSnapshot {
   operationId: string;
   providerIds: number[];
   preimage: Record<number, Record<string, unknown>>;
-  patch: ProviderBatchPatch;
+  durable?: boolean;
 }
 
 interface ProviderDeleteUndoSnapshot {
@@ -1514,14 +1524,6 @@ const SINGLE_EDIT_PREIMAGE_FIELD_TO_PROVIDER_KEY: Record<string, keyof Provider>
   cc: "cc",
 };
 
-const EMPTY_PROVIDER_BATCH_PATCH: ProviderBatchPatch = (() => {
-  const normalized = normalizeProviderBatchPatchDraft({});
-  if (!normalized.ok) {
-    throw new Error("Failed to initialize empty provider batch patch");
-  }
-  return normalized.data;
-})();
-
 function hasProviderFieldChangedForUndo(before: unknown, after: unknown): boolean {
   if (Object.is(before, after)) {
     return false;
@@ -1590,9 +1592,66 @@ function buildActionValidationError(error: z.ZodError): ProviderPatchActionError
 function buildNoChangesError(): ProviderPatchActionError {
   return {
     ok: false,
-    error: "没有可应用的变更",
+    error: PROVIDER_BATCH_PATCH_ERROR_CODES.NOTHING_TO_APPLY,
     errorCode: PROVIDER_BATCH_PATCH_ERROR_CODES.NOTHING_TO_APPLY,
   };
+}
+
+function buildProviderBatchApplyFingerprint(input: {
+  previewToken: string;
+  previewRevision: string;
+  providerIds: number[];
+  patch: ProviderBatchPatch;
+  excludeProviderIds: number[];
+}): string {
+  return createHash("sha256").update(JSON.stringify(input)).digest("hex");
+}
+
+function buildProviderBatchApplyClaimKey(previewToken: string, idempotencyKey?: string): string {
+  return idempotencyKey ? `idempotency:${idempotencyKey}` : `preview:${previewToken}`;
+}
+
+function buildExpectedProviderBatchPreimages(
+  snapshot: ProviderBatchPatchPreviewSnapshot,
+  providerIds: number[]
+): {
+  expected: ProviderBatchExpectedPreimage[];
+  undo: Record<number, Record<string, unknown>>;
+} | null {
+  const rowsByProvider = new Map<number, ProviderBatchPreviewRow[]>();
+  for (const row of snapshot.rows) {
+    const rows = rowsByProvider.get(row.providerId) ?? [];
+    rows.push(row);
+    rowsByProvider.set(row.providerId, rows);
+  }
+
+  const expected: ProviderBatchExpectedPreimage[] = [];
+  const undo: Record<number, Record<string, unknown>> = {};
+  for (const providerId of providerIds) {
+    const providerType = snapshot.providerTypes?.[providerId];
+    const isEnabled = snapshot.providerEnabled?.[providerId];
+    const rows = rowsByProvider.get(providerId);
+    if (
+      !providerType ||
+      typeof isEnabled !== "boolean" ||
+      !rows ||
+      rows.length !== snapshot.changedFields.length
+    ) {
+      return null;
+    }
+
+    const values: Partial<Record<keyof Provider, unknown>> = { isEnabled };
+    const undoValues: Record<string, unknown> = {};
+    for (const row of rows) {
+      const providerKey = PATCH_FIELD_TO_PROVIDER_KEY[row.field];
+      values[providerKey] = row.before;
+      undoValues[providerKey] = row.before;
+    }
+    expected.push({ providerId, providerType, values });
+    undo[providerId] = undoValues;
+  }
+
+  return { expected, undo };
 }
 
 function mapApplyUpdatesToRepositoryFormat(
@@ -1968,12 +2027,157 @@ function generatePreviewRows(
   return rows;
 }
 
+function buildProviderBatchConflictError(
+  status: "idempotency_conflict" | "preview_consumed",
+  hasIdempotencyKey: boolean
+): ProviderPatchActionError {
+  if (status === "idempotency_conflict" && hasIdempotencyKey) {
+    return {
+      ok: false,
+      error: PROVIDER_BATCH_PATCH_ERROR_CODES.IDEMPOTENCY_CONFLICT,
+      errorCode: PROVIDER_BATCH_PATCH_ERROR_CODES.IDEMPOTENCY_CONFLICT,
+    };
+  }
+  return {
+    ok: false,
+    error: PROVIDER_BATCH_PATCH_ERROR_CODES.PREVIEW_STALE,
+    errorCode: PROVIDER_BATCH_PATCH_ERROR_CODES.PREVIEW_STALE,
+  };
+}
+
+async function restoreProviderPatchUndoSnapshot(
+  operation: ProviderBatchApplyLedgerResult,
+  undoAvailable: boolean,
+  initialSnapshot?: Pick<ProviderPatchUndoSnapshot, "providerIds" | "preimage">
+): Promise<void> {
+  if (!undoAvailable) {
+    return;
+  }
+  const remainingTtlSeconds = Math.ceil(
+    (new Date(operation.applyResult.undoExpiresAt).getTime() - Date.now()) / 1000
+  );
+  if (remainingTtlSeconds <= 0) {
+    return;
+  }
+
+  if (!initialSnapshot && !operation.undoRestorable) {
+    return;
+  }
+
+  const providerIds = initialSnapshot?.providerIds ?? operation.effectiveProviderIds;
+  const preimage =
+    initialSnapshot?.preimage ??
+    Object.fromEntries(operation.preimages.map((entry) => [entry.providerId, entry.values]));
+  const saved = await providerPatchUndoStore.set(
+    operation.applyResult.undoToken,
+    {
+      undoToken: operation.applyResult.undoToken,
+      operationId: operation.applyResult.operationId,
+      providerIds,
+      preimage,
+      durable: true,
+    },
+    remainingTtlSeconds
+  );
+  if (!saved) {
+    logger.warn("applyProviderBatchPatch:undo_snapshot_restore_failed", {
+      operationId: operation.applyResult.operationId,
+    });
+  }
+}
+
+async function runProviderBatchPostCommitEffects(
+  operation: ProviderBatchApplyLedgerResult
+): Promise<void> {
+  if (operation.postCommitEffects.clearLimit5hCostCache) {
+    const { clearSingleProviderCostCache } = await import("@/lib/redis/cost-cache-cleanup");
+    await Promise.all(
+      operation.effectiveProviderIds.map((providerId) =>
+        clearSingleProviderCostCache({ providerId }).catch((error) => {
+          logger.warn("applyProviderBatchPatch:clear_provider_cost_cache_failed", {
+            providerId,
+            error: error instanceof Error ? error.message : String(error),
+          });
+          return null;
+        })
+      )
+    );
+  }
+
+  try {
+    await publishProviderCacheInvalidation();
+  } catch (error) {
+    logger.warn("applyProviderBatchPatch:provider_cache_invalidation_failed", {
+      operationId: operation.applyResult.operationId,
+      error: error instanceof Error ? error.message : String(error),
+    });
+  }
+
+  if (!operation.postCommitEffects.circuitBreakerChanged) {
+    return;
+  }
+
+  for (const providerId of operation.effectiveProviderIds) {
+    try {
+      await deleteProviderCircuitConfig(providerId);
+    } catch (error) {
+      logger.warn("applyProviderBatchPatch:cb_cache_invalidation_failed", {
+        providerId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
+
+  try {
+    await publishCircuitBreakerConfigInvalidation(operation.effectiveProviderIds);
+  } catch (error) {
+    logger.warn("applyProviderBatchPatch:cb_broadcast_failed", {
+      operationId: operation.applyResult.operationId,
+      error: error instanceof Error ? error.message : String(error),
+    });
+  }
+
+  const nextFailureThreshold = operation.postCommitEffects.nextCircuitBreakerFailureThreshold;
+  if (typeof nextFailureThreshold !== "number" || nextFailureThreshold > 0) {
+    return;
+  }
+
+  const batchSize = 20;
+  for (let index = 0; index < operation.effectiveProviderIds.length; index += batchSize) {
+    const batch = operation.effectiveProviderIds.slice(index, index + batchSize);
+    await Promise.all(
+      batch.map(async (providerId) => {
+        try {
+          const current = await findProviderById(providerId);
+          if (!current || current.circuitBreakerFailureThreshold > 0) return;
+          await forceCloseCircuitState(providerId, { reason: "circuit_breaker_disabled" });
+        } catch (error) {
+          logger.warn("applyProviderBatchPatch:force_close_circuit_failed", {
+            providerId,
+            error: error instanceof Error ? error.message : String(error),
+          });
+        }
+      })
+    );
+  }
+}
+
+async function completeProviderBatchApply(
+  operation: ProviderBatchApplyLedgerResult,
+  undoAvailable: boolean,
+  initialSnapshot?: Pick<ProviderPatchUndoSnapshot, "providerIds" | "preimage">
+): Promise<ActionResult<ApplyProviderBatchPatchResult>> {
+  await restoreProviderPatchUndoSnapshot(operation, undoAvailable, initialSnapshot);
+  await runProviderBatchPostCommitEffects(operation);
+  return { ok: true, data: operation.applyResult };
+}
+
 export async function previewProviderBatchPatch(
   input: unknown
 ): Promise<ActionResult<PreviewProviderBatchPatchResult>> {
   try {
     const session = await getSession();
-    if (!session || session.user.role !== "admin") {
+    if (session?.user.role !== "admin") {
       return { ok: false, error: "无权限执行此操作" };
     }
 
@@ -2017,8 +2221,12 @@ export async function previewProviderBatchPatch(
       patchSerialized: JSON.stringify(normalizedPatch.data),
       changedFields,
       rows,
-      applied: false,
-      appliedResultByIdempotencyKey: {},
+      providerTypes: Object.fromEntries(
+        matchedProviders.map((provider) => [provider.id, provider.providerType])
+      ),
+      providerEnabled: Object.fromEntries(
+        matchedProviders.map((provider) => [provider.id, provider.isEnabled])
+      ),
     });
 
     return {
@@ -2049,24 +2257,13 @@ export async function applyProviderBatchPatch(
 ): Promise<ActionResult<ApplyProviderBatchPatchResult>> {
   try {
     const session = await getSession();
-    if (!session || session.user.role !== "admin") {
+    if (session?.user.role !== "admin") {
       return { ok: false, error: "无权限执行此操作" };
     }
 
     const parsed = ApplyProviderBatchPatchSchema.safeParse(input);
     if (!parsed.success) {
       return buildActionValidationError(parsed.error);
-    }
-
-    const nowMs = Date.now();
-
-    const snapshot = await providerBatchPatchPreviewStore.get(parsed.data.previewToken);
-    if (!snapshot) {
-      return {
-        ok: false,
-        error: "预览已过期，请重新预览",
-        errorCode: PROVIDER_BATCH_PATCH_ERROR_CODES.PREVIEW_EXPIRED,
-      };
     }
 
     const normalizedPatch = normalizeProviderBatchPatchDraft(parsed.data.patch);
@@ -2083,33 +2280,66 @@ export async function applyProviderBatchPatch(
     }
 
     const providerIds = dedupeProviderIds(parsed.data.providerIds);
+    const excludeProviderIds = dedupeProviderIds(parsed.data.excludeProviderIds ?? []);
+    const claimKey = buildProviderBatchApplyClaimKey(
+      parsed.data.previewToken,
+      parsed.data.idempotencyKey
+    );
+    const payloadFingerprint = buildProviderBatchApplyFingerprint({
+      previewToken: parsed.data.previewToken,
+      previewRevision: parsed.data.previewRevision,
+      providerIds,
+      patch: normalizedPatch.data,
+      excludeProviderIds,
+    });
+
+    const existingOperation = await findProviderBatchApplyOperation({
+      claimKey,
+      previewToken: parsed.data.previewToken,
+      payloadFingerprint,
+    });
+    if (existingOperation.status === "replay") {
+      return completeProviderBatchApply(existingOperation.result, existingOperation.undoAvailable);
+    }
+    if (
+      existingOperation.status === "idempotency_conflict" ||
+      existingOperation.status === "preview_consumed"
+    ) {
+      return buildProviderBatchConflictError(
+        existingOperation.status,
+        Boolean(parsed.data.idempotencyKey)
+      );
+    }
+
+    const snapshot = await providerBatchPatchPreviewStore.get(parsed.data.previewToken);
+    if (!snapshot) {
+      return {
+        ok: false,
+        error: PROVIDER_BATCH_PATCH_ERROR_CODES.PREVIEW_EXPIRED,
+        errorCode: PROVIDER_BATCH_PATCH_ERROR_CODES.PREVIEW_EXPIRED,
+      };
+    }
+
     const patchSerialized = JSON.stringify(normalizedPatch.data);
     const isStale =
       parsed.data.previewRevision !== snapshot.previewRevision ||
       !isSameProviderIdList(providerIds, snapshot.providerIds) ||
       patchSerialized !== snapshot.patchSerialized;
 
-    if (parsed.data.idempotencyKey) {
-      const existingResult = snapshot.appliedResultByIdempotencyKey[parsed.data.idempotencyKey];
-      if (existingResult) {
-        return { ok: true, data: existingResult };
-      }
-    }
-
-    if (isStale || snapshot.applied) {
+    if (isStale) {
       return {
         ok: false,
-        error: "预览内容已失效，请重新预览",
+        error: PROVIDER_BATCH_PATCH_ERROR_CODES.PREVIEW_STALE,
         errorCode: PROVIDER_BATCH_PATCH_ERROR_CODES.PREVIEW_STALE,
       };
     }
 
-    const excludeSet = new Set(parsed.data.excludeProviderIds ?? []);
+    const excludeSet = new Set(excludeProviderIds);
     const effectiveProviderIds = providerIds.filter((id) => !excludeSet.has(id));
     if (effectiveProviderIds.length === 0) {
       return {
         ok: false,
-        error: "排除后无可应用的供应商",
+        error: PROVIDER_BATCH_PATCH_ERROR_CODES.NOTHING_TO_APPLY,
         errorCode: PROVIDER_BATCH_PATCH_ERROR_CODES.NOTHING_TO_APPLY,
       };
     }
@@ -2123,18 +2353,14 @@ export async function applyProviderBatchPatch(
       };
     }
 
-    const allProviders = await findAllProvidersFresh();
-    const effectiveIdSet = new Set(effectiveProviderIds);
-    const matchedProviders = allProviders.filter((p) => effectiveIdSet.has(p.id));
     const changedFields = getChangedPatchFields(normalizedPatch.data);
-    const preimage: Record<number, Record<string, unknown>> = {};
-    for (const provider of matchedProviders) {
-      const fieldValues: Record<string, unknown> = {};
-      for (const field of changedFields) {
-        const providerKey = PATCH_FIELD_TO_PROVIDER_KEY[field];
-        fieldValues[providerKey] = provider[providerKey];
-      }
-      preimage[provider.id] = fieldValues;
+    const preimages = buildExpectedProviderBatchPreimages(snapshot, providerIds);
+    if (!preimages) {
+      return {
+        ok: false,
+        error: PROVIDER_BATCH_PATCH_ERROR_CODES.PREVIEW_STALE,
+        errorCode: PROVIDER_BATCH_PATCH_ERROR_CODES.PREVIEW_STALE,
+      };
     }
 
     const repositoryUpdates = mapApplyUpdatesToRepositoryFormat(updatesResult.data);
@@ -2143,106 +2369,92 @@ export async function applyProviderBatchPatch(
       (f) => CLAUDE_ONLY_FIELDS.has(f) || CODEX_ONLY_FIELDS.has(f) || GEMINI_ONLY_FIELDS.has(f)
     );
 
-    let dbUpdatedCount: number;
+    const updateGroups: ProviderBatchUpdateGroup[] = [];
     if (!hasTypeSpecificFields) {
-      dbUpdatedCount = await updateProvidersBatch(effectiveProviderIds, repositoryUpdates);
+      updateGroups.push({ ids: effectiveProviderIds, updates: repositoryUpdates });
     } else {
       const providersByType = new Map<string, number[]>();
-      for (const provider of matchedProviders) {
-        const type = provider.providerType;
+      for (const expected of preimages.expected) {
+        if (excludeSet.has(expected.providerId)) {
+          continue;
+        }
+        const type = expected.providerType;
         if (!providersByType.has(type)) providersByType.set(type, []);
-        providersByType.get(type)!.push(provider.id);
+        providersByType.get(type)!.push(expected.providerId);
       }
 
-      dbUpdatedCount = 0;
       for (const [type, ids] of providersByType) {
         const filtered = filterRepositoryUpdatesByProviderType(repositoryUpdates, type);
         if (Object.keys(filtered).length > 0) {
-          dbUpdatedCount += await updateProvidersBatch(ids, filtered);
+          updateGroups.push({ ids, updates: filtered });
         }
       }
     }
 
-    if (repositoryUpdates.limit5hResetMode !== undefined) {
-      const { clearSingleProviderCostCache } = await import("@/lib/redis/cost-cache-cleanup");
-      await Promise.all(
-        effectiveProviderIds.map((providerId) =>
-          clearSingleProviderCostCache({ providerId }).catch((error) => {
-            logger.warn("applyProviderBatchPatch:clear_provider_cost_cache_failed", {
-              providerId,
-              error: error instanceof Error ? error.message : String(error),
-            });
-            return null;
-          })
-        )
-      );
-    }
-
-    await publishProviderCacheInvalidation();
-
-    const hasCbFieldChange = changedFields.some(
-      (f) =>
-        f === "circuit_breaker_failure_threshold" ||
-        f === "circuit_breaker_open_duration" ||
-        f === "circuit_breaker_half_open_success_threshold"
-    );
-    if (hasCbFieldChange) {
-      for (const id of effectiveProviderIds) {
-        try {
-          await deleteProviderCircuitConfig(id);
-        } catch (error) {
-          logger.warn("applyProviderBatchPatch:cb_cache_invalidation_failed", {
-            providerId: id,
-            error: error instanceof Error ? error.message : String(error),
-          });
-        }
-      }
-
-      // 清除配置缓存并广播（跨实例立即生效）
-      await publishCircuitBreakerConfigInvalidation(effectiveProviderIds);
-
-      // 若本次补丁将熔断器禁用（threshold<=0），则应立即解除 OPEN/HALF-OPEN 拦截（跨实例）
-      const nextFailureThreshold = updatesResult.data.circuit_breaker_failure_threshold;
-      if (typeof nextFailureThreshold === "number" && nextFailureThreshold <= 0) {
-        const batchSize = 20;
-        for (let i = 0; i < effectiveProviderIds.length; i += batchSize) {
-          const batch = effectiveProviderIds.slice(i, i + batchSize);
-          await Promise.all(
-            batch.map((providerId) =>
-              forceCloseCircuitState(providerId, { reason: "circuit_breaker_disabled" })
-            )
-          );
-        }
-      }
-    }
-
-    const appliedAt = new Date(nowMs).toISOString();
     const undoToken = createProviderPatchUndoToken();
-    const undoExpiresAtMs = nowMs + PROVIDER_PATCH_UNDO_TTL_SECONDS * 1000;
-
-    const applyResult: ApplyProviderBatchPatchResult = {
+    const undoPreimage = Object.fromEntries(
+      effectiveProviderIds.map((providerId) => [providerId, preimages.undo[providerId]])
+    );
+    let undoRestorable = true;
+    const durableUndoPreimage = Object.fromEntries(
+      Object.entries(undoPreimage).map(([providerId, values]) => [
+        providerId,
+        Object.fromEntries(
+          Object.entries(values).filter(([key]) => {
+            if (!SENSITIVE_PROVIDER_BATCH_UNDO_KEYS.has(key)) {
+              return true;
+            }
+            undoRestorable = false;
+            return false;
+          })
+        ),
+      ])
+    );
+    const circuitBreakerChanged = changedFields.some(
+      (field) =>
+        field === "circuit_breaker_failure_threshold" ||
+        field === "circuit_breaker_open_duration" ||
+        field === "circuit_breaker_half_open_success_threshold"
+    );
+    const operation = await applyProviderBatchOperationIfUnchanged({
+      claimKey,
+      previewToken: parsed.data.previewToken,
+      payloadFingerprint,
+      groups: updateGroups,
+      expectedPreimages: preimages.expected,
+      effectiveProviderIds,
+      undoPreimage: durableUndoPreimage,
+      undoRestorable,
+      postCommitEffects: {
+        clearLimit5hCostCache: repositoryUpdates.limit5hResetMode !== undefined,
+        circuitBreakerChanged,
+        nextCircuitBreakerFailureThreshold:
+          typeof updatesResult.data.circuit_breaker_failure_threshold === "number"
+            ? updatesResult.data.circuit_breaker_failure_threshold
+            : null,
+      },
       operationId: createProviderPatchOperationId(),
-      appliedAt,
-      updatedCount: dbUpdatedCount,
       undoToken,
-      undoExpiresAt: new Date(undoExpiresAtMs).toISOString(),
-    };
-
-    snapshot.applied = true;
-    if (parsed.data.idempotencyKey) {
-      snapshot.appliedResultByIdempotencyKey[parsed.data.idempotencyKey] = applyResult;
-    }
-    await providerBatchPatchPreviewStore.set(parsed.data.previewToken, snapshot);
-
-    await providerPatchUndoStore.set(undoToken, {
-      undoToken,
-      operationId: applyResult.operationId,
-      providerIds: effectiveProviderIds,
-      preimage,
-      patch: normalizedPatch.data,
+      undoTtlSeconds: PROVIDER_PATCH_UNDO_TTL_SECONDS,
     });
 
-    return { ok: true, data: applyResult };
+    if (operation.status === "stale") {
+      return {
+        ok: false,
+        error: PROVIDER_BATCH_PATCH_ERROR_CODES.PREVIEW_STALE,
+        errorCode: PROVIDER_BATCH_PATCH_ERROR_CODES.PREVIEW_STALE,
+      };
+    }
+    if (operation.status === "idempotency_conflict" || operation.status === "preview_consumed") {
+      return buildProviderBatchConflictError(operation.status, Boolean(parsed.data.idempotencyKey));
+    }
+    return completeProviderBatchApply(
+      operation.result,
+      operation.undoAvailable,
+      operation.status === "applied"
+        ? { providerIds: effectiveProviderIds, preimage: undoPreimage }
+        : undefined
+    );
   } catch (error) {
     logger.error("应用批量补丁失败:", error);
     const message = error instanceof Error ? error.message : "应用批量补丁失败";
@@ -2255,7 +2467,7 @@ export async function undoProviderPatch(
 ): Promise<ActionResult<UndoProviderPatchResult>> {
   try {
     const session = await getSession();
-    if (!session || session.user.role !== "admin") {
+    if (session?.user.role !== "admin") {
       return { ok: false, error: "无权限执行此操作" };
     }
 
@@ -2266,25 +2478,65 @@ export async function undoProviderPatch(
 
     const nowMs = Date.now();
 
-    const snapshot = await providerPatchUndoStore.get(parsed.data.undoToken);
+    let snapshot = await providerPatchUndoStore.get(parsed.data.undoToken);
     if (!snapshot) {
-      return {
-        ok: false,
-        error: "撤销窗口已过期",
-        errorCode: PROVIDER_BATCH_PATCH_ERROR_CODES.UNDO_EXPIRED,
+      const durableUndo = await findProviderBatchUndoOperation({
+        undoToken: parsed.data.undoToken,
+        operationId: parsed.data.operationId,
+        now: new Date(nowMs),
+      });
+      if (durableUndo.status === "conflict") {
+        return {
+          ok: false,
+          error: PROVIDER_BATCH_PATCH_ERROR_CODES.UNDO_CONFLICT,
+          errorCode: PROVIDER_BATCH_PATCH_ERROR_CODES.UNDO_CONFLICT,
+        };
+      }
+      if (durableUndo.status === "expired") {
+        return {
+          ok: false,
+          error: PROVIDER_BATCH_PATCH_ERROR_CODES.UNDO_EXPIRED,
+          errorCode: PROVIDER_BATCH_PATCH_ERROR_CODES.UNDO_EXPIRED,
+        };
+      }
+      snapshot = {
+        undoToken: parsed.data.undoToken,
+        operationId: parsed.data.operationId,
+        providerIds: durableUndo.result.effectiveProviderIds,
+        preimage: Object.fromEntries(
+          durableUndo.result.preimages.map((entry) => [entry.providerId, entry.values])
+        ),
+        durable: true,
       };
     }
 
     if (snapshot.operationId !== parsed.data.operationId) {
       return {
         ok: false,
-        error: "撤销参数与操作不匹配",
+        error: PROVIDER_BATCH_PATCH_ERROR_CODES.UNDO_CONFLICT,
         errorCode: PROVIDER_BATCH_PATCH_ERROR_CODES.UNDO_CONFLICT,
       };
     }
 
-    // Delete after validation passes so operationId mismatch doesn't destroy the token
-    await providerPatchUndoStore.delete(parsed.data.undoToken);
+    // Volatile undo has no durable ledger, so consume its token before any provider write.
+    if (!snapshot.durable) {
+      const consumedSnapshot = await providerPatchUndoStore.getAndDelete(parsed.data.undoToken);
+      if (!consumedSnapshot) {
+        return {
+          ok: false,
+          error: PROVIDER_BATCH_PATCH_ERROR_CODES.UNDO_EXPIRED,
+          errorCode: PROVIDER_BATCH_PATCH_ERROR_CODES.UNDO_EXPIRED,
+        };
+      }
+      if (consumedSnapshot.operationId !== parsed.data.operationId) {
+        return {
+          ok: false,
+          error: PROVIDER_BATCH_PATCH_ERROR_CODES.UNDO_CONFLICT,
+          errorCode: PROVIDER_BATCH_PATCH_ERROR_CODES.UNDO_CONFLICT,
+        };
+      }
+      snapshot = consumedSnapshot;
+    }
 
     // Group providers by identical preimage values to minimise DB round-trips
     const preimageGroups = new Map<string, { ids: number[]; updates: BatchProviderUpdates }>();
@@ -2314,14 +2566,67 @@ export async function undoProviderPatch(
       }
     }
 
-    let revertedCount = 0;
-    for (const { ids, updates } of preimageGroups.values()) {
-      const count = await updateProvidersBatch(ids, updates);
-      revertedCount += count;
+    const undoResult = snapshot.durable
+      ? await undoProviderBatchOperation({
+          undoToken: parsed.data.undoToken,
+          operationId: parsed.data.operationId,
+          groups: [...preimageGroups.values()],
+          revertedAt: new Date(nowMs),
+        })
+      : {
+          status: "reverted" as const,
+          revertedCount: await (async () => {
+            let count = 0;
+            for (const { ids, updates } of preimageGroups.values()) {
+              count += await updateProvidersBatch(ids, updates);
+            }
+            return count;
+          })(),
+        };
+    if (undoResult.status === "conflict") {
+      return {
+        ok: false,
+        error: PROVIDER_BATCH_PATCH_ERROR_CODES.UNDO_CONFLICT,
+        errorCode: PROVIDER_BATCH_PATCH_ERROR_CODES.UNDO_CONFLICT,
+      };
+    }
+    if (undoResult.status === "mismatch") {
+      return {
+        ok: false,
+        error: PROVIDER_BATCH_PATCH_ERROR_CODES.UNDO_STALE,
+        errorCode: PROVIDER_BATCH_PATCH_ERROR_CODES.UNDO_STALE,
+      };
+    }
+    if (undoResult.status === "expired") {
+      await providerPatchUndoStore.delete(parsed.data.undoToken);
+      return {
+        ok: false,
+        error: PROVIDER_BATCH_PATCH_ERROR_CODES.UNDO_EXPIRED,
+        errorCode: PROVIDER_BATCH_PATCH_ERROR_CODES.UNDO_EXPIRED,
+      };
+    }
+    const revertedCount = undoResult.revertedCount;
+
+    if (snapshot.durable) {
+      try {
+        await providerPatchUndoStore.delete(parsed.data.undoToken);
+      } catch (error) {
+        logger.warn("undoProviderPatch:undo_snapshot_cleanup_failed", {
+          operationId: snapshot.operationId,
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
     }
 
     if (preimageGroups.size > 0) {
-      await publishProviderCacheInvalidation();
+      try {
+        await publishProviderCacheInvalidation();
+      } catch (error) {
+        logger.warn("undoProviderPatch:provider_cache_invalidation_failed", {
+          operationId: snapshot.operationId,
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
     }
 
     const hasCbRevert = Object.values(snapshot.preimage).some((fields) =>
@@ -2340,7 +2645,14 @@ export async function undoProviderPatch(
       }
 
       // 清除配置缓存并广播（跨实例立即生效）
-      await publishCircuitBreakerConfigInvalidation(snapshot.providerIds);
+      try {
+        await publishCircuitBreakerConfigInvalidation(snapshot.providerIds);
+      } catch (error) {
+        logger.warn("undoProviderPatch:cb_broadcast_failed", {
+          operationId: snapshot.operationId,
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
 
       // 若撤销后变为禁用（threshold<=0），则应立即解除 OPEN/HALF-OPEN 拦截（跨实例）
       const disabledProviderIds = snapshot.providerIds.filter((providerId) => {
@@ -2356,7 +2668,14 @@ export async function undoProviderPatch(
           const batch = disabledProviderIds.slice(i, i + batchSize);
           await Promise.all(
             batch.map((providerId) =>
-              forceCloseCircuitState(providerId, { reason: "circuit_breaker_disabled" })
+              forceCloseCircuitState(providerId, { reason: "circuit_breaker_disabled" }).catch(
+                (error) => {
+                  logger.warn("undoProviderPatch:force_close_circuit_failed", {
+                    providerId,
+                    error: error instanceof Error ? error.message : String(error),
+                  });
+                }
+              )
             )
           );
         }
@@ -2407,7 +2726,7 @@ export async function batchUpdateProviders(
 ): Promise<ActionResult<{ updatedCount: number }>> {
   try {
     const session = await getSession();
-    if (!session || session.user.role !== "admin") {
+    if (session?.user.role !== "admin") {
       return { ok: false, error: "无权限执行此操作" };
     }
 
@@ -2576,7 +2895,7 @@ export async function batchDeleteProviders(
 ): Promise<ActionResult<BatchDeleteProvidersResult>> {
   try {
     const session = await getSession();
-    if (!session || session.user.role !== "admin") {
+    if (session?.user.role !== "admin") {
       return { ok: false, error: "无权限执行此操作" };
     }
 
@@ -2641,7 +2960,7 @@ export async function undoProviderDelete(
 ): Promise<ActionResult<UndoProviderDeleteResult>> {
   try {
     const session = await getSession();
-    if (!session || session.user.role !== "admin") {
+    if (session?.user.role !== "admin") {
       return { ok: false, error: "无权限执行此操作" };
     }
 
@@ -2705,7 +3024,7 @@ export async function batchResetProviderCircuits(
 ): Promise<ActionResult<{ resetCount: number }>> {
   try {
     const session = await getSession();
-    if (!session || session.user.role !== "admin") {
+    if (session?.user.role !== "admin") {
       return { ok: false, error: "无权限执行此操作" };
     }
 
@@ -2754,7 +3073,7 @@ export async function getProviderLimitUsage(providerId: number): Promise<
 > {
   try {
     const session = await getSession();
-    if (!session || session.user.role !== "admin") {
+    if (session?.user.role !== "admin") {
       return { ok: false, error: "无权限执行此操作" };
     }
 
@@ -2908,7 +3227,7 @@ export async function getProviderLimitUsageBatch(
 
   try {
     const session = await getSession();
-    if (!session || session.user.role !== "admin") {
+    if (session?.user.role !== "admin") {
       logger.warn("getProviderLimitUsageBatch: 无权限执行此操作");
       return result;
     }
@@ -3050,7 +3369,7 @@ export async function testProviderProxy(data: {
 > {
   try {
     const session = await getSession();
-    if (!session || session.user.role !== "admin") {
+    if (session?.user.role !== "admin") {
       return { ok: false, error: "无权限执行此操作" };
     }
 
@@ -3176,7 +3495,7 @@ export async function getUnmaskedProviderKey(id: number): Promise<ActionResult<{
 
   try {
     const session = await getSession();
-    if (!session || session.user.role !== "admin") {
+    if (session?.user.role !== "admin") {
       return { ok: false, error: "权限不足：仅管理员可查看完整密钥" };
     }
 
@@ -3931,7 +4250,7 @@ async function executeProviderApiTest(
 ): Promise<ProviderApiTestResult> {
   try {
     const session = await getSession();
-    if (!session || session.user.role !== "admin") {
+    if (session?.user.role !== "admin") {
       return { ok: false, error: "无权限执行此操作" };
     }
 
@@ -4685,7 +5004,7 @@ async function isUrlSafeForApiTest(
  */
 export async function testProviderUnified(data: UnifiedTestArgs): Promise<UnifiedTestResult> {
   const session = await getSession();
-  if (!session || session.user.role !== "admin") {
+  if (session?.user.role !== "admin") {
     return {
       ok: false,
       error: "未授权",
@@ -4809,7 +5128,7 @@ export async function testProviderById(
   args?: TestProviderByIdArgs
 ): Promise<UnifiedTestResult> {
   const session = await getSession();
-  if (!session || session.user.role !== "admin") {
+  if (session?.user.role !== "admin") {
     return {
       ok: false,
       error: "未授权",
@@ -4901,7 +5220,7 @@ export async function getProviderTestPresets(
   providerType: ProviderType
 ): Promise<ActionResult<PresetConfigResponse[]>> {
   const session = await getSession();
-  if (!session || session.user.role !== "admin") {
+  if (session?.user.role !== "admin") {
     return {
       ok: false,
       error: "未授权",
@@ -5078,7 +5397,7 @@ export async function fetchUpstreamModels(
 ): Promise<FetchUpstreamModelsResult> {
   try {
     const session = await getSession();
-    if (!session || session.user.role !== "admin") {
+    if (session?.user.role !== "admin") {
       return { ok: false, error: "无权限执行此操作" };
     }
 
@@ -5373,7 +5692,7 @@ export async function reclusterProviderVendors(args: {
 }): Promise<ActionResult<ReclusterResult>> {
   try {
     const session = await getSession();
-    if (!session || session.user.role !== "admin") {
+    if (session?.user.role !== "admin") {
       return { ok: false, error: "NO_PERMISSION" };
     }
 

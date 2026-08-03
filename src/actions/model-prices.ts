@@ -252,7 +252,7 @@ export async function uploadPriceTable(
 ): Promise<ActionResult<PriceUpdateResult>> {
   // 权限检查：只有管理员可以上传价格表
   const session = await getSession();
-  if (!session || session.user.role !== "admin") {
+  if (session?.user.role !== "admin") {
     return { ok: false, error: "无权限执行此操作" };
   }
 
@@ -329,7 +329,7 @@ export async function getModelPrices(): Promise<ModelPrice[]> {
   try {
     // 权限检查：只有管理员可以查看价格表
     const session = await getSession();
-    if (!session || session.user.role !== "admin") {
+    if (session?.user.role !== "admin") {
       return [];
     }
 
@@ -375,7 +375,7 @@ export async function getAvailableModelCatalog(options?: {
 }): Promise<AvailableModelCatalogItem[]> {
   try {
     const session = await getSession();
-    if (!session || session.user.role !== "admin") {
+    if (session?.user.role !== "admin") {
       return [];
     }
 
@@ -439,7 +439,7 @@ export async function getModelPricesPaginated(
   try {
     // 权限检查：只有管理员可以查看价格表
     const session = await getSession();
-    if (!session || session.user.role !== "admin") {
+    if (session?.user.role !== "admin") {
       return {
         ok: false,
         error: "无权限执行此操作",
@@ -505,7 +505,7 @@ export async function checkLiteLLMSyncConflicts(): Promise<ActionResult<SyncConf
   try {
     // 权限检查：只有管理员可以检查冲突
     const session = await getSession();
-    if (!session || session.user.role !== "admin") {
+    if (session?.user.role !== "admin") {
       return { ok: false, error: "无权限执行此操作" };
     }
 
@@ -561,7 +561,7 @@ export async function syncLiteLLMPrices(
   try {
     // 权限检查：只有管理员可以同步价格表
     const session = await getSession();
-    if (!session || session.user.role !== "admin") {
+    if (session?.user.role !== "admin") {
       return { ok: false, error: "无权限执行此操作" };
     }
 
@@ -700,7 +700,7 @@ export async function upsertSingleModelPrice(
   try {
     // 权限检查：只有管理员可以操作
     const session = await getSession();
-    if (!session || session.user.role !== "admin") {
+    if (session?.user.role !== "admin") {
       return { ok: false, error: "无权限执行此操作" };
     }
 
@@ -861,7 +861,7 @@ export async function deleteSingleModelPrice(modelName: string): Promise<ActionR
   try {
     // 权限检查：只有管理员可以操作
     const session = await getSession();
-    if (!session || session.user.role !== "admin") {
+    if (session?.user.role !== "admin") {
       return { ok: false, error: "无权限执行此操作" };
     }
 
@@ -916,7 +916,7 @@ export async function pinModelPricingProviderAsManual(input: {
 }): Promise<ActionResult<ModelPrice>> {
   try {
     const session = await getSession();
-    if (!session || session.user.role !== "admin") {
+    if (session?.user.role !== "admin") {
       return { ok: false, error: "无权限执行此操作" };
     }
 

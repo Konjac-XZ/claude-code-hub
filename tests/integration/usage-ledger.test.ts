@@ -58,6 +58,14 @@ type InsertRequestInput = {
   inputTokens?: number | null;
   outputTokens?: number | null;
   providerChain?: Array<{ id: number; name: string }> | null;
+  sessionId?: string | null;
+  sessionIdentity?: string | null;
+  sessionIdentityKind?: "session_id" | "prefix_affinity" | null;
+  affinityScopeTag?: string | null;
+  affinityFingerprint?: string | null;
+  affinityFingerprintChain?: string[] | null;
+  isReplay?: boolean;
+  replaySourceRequestId?: number | null;
   createdAt?: Date;
 };
 
@@ -80,6 +88,14 @@ async function insertMessageRequestRow(input: InsertRequestInput) {
       inputTokens: input.inputTokens,
       outputTokens: input.outputTokens,
       providerChain: input.providerChain,
+      sessionId: input.sessionId,
+      sessionIdentity: input.sessionIdentity,
+      sessionIdentityKind: input.sessionIdentityKind,
+      affinityScopeTag: input.affinityScopeTag,
+      affinityFingerprint: input.affinityFingerprint,
+      affinityFingerprintChain: input.affinityFingerprintChain,
+      isReplay: input.isReplay,
+      replaySourceRequestId: input.replaySourceRequestId,
       createdAt: input.createdAt,
     })
     .returning({ id: messageRequest.id });
@@ -104,6 +120,14 @@ async function selectLedgerRowByRequestId(requestId: number) {
       originalModel: usageLedger.originalModel,
       endpoint: usageLedger.endpoint,
       apiType: usageLedger.apiType,
+      sessionId: usageLedger.sessionId,
+      sessionIdentity: usageLedger.sessionIdentity,
+      sessionIdentityKind: usageLedger.sessionIdentityKind,
+      affinityScopeTag: usageLedger.affinityScopeTag,
+      affinityFingerprint: usageLedger.affinityFingerprint,
+      affinityFingerprintChain: usageLedger.affinityFingerprintChain,
+      isReplay: usageLedger.isReplay,
+      replaySourceRequestId: usageLedger.replaySourceRequestId,
       statusCode: usageLedger.statusCode,
       isSuccess: usageLedger.isSuccess,
       successRateOutcome: usageLedger.successRateOutcome,
@@ -223,6 +247,36 @@ run("usage ledger integration", () => {
       expect(rows[0]?.statusCode).toBe(201);
     });
 
+    test("projects prefix Session identity and zero-cost Replay provenance", async () => {
+      const requestId = await insertMessageRequestRow({
+        key: nextKey("trigger-replay-identity"),
+        userId: nextUserId(),
+        providerId: nextProviderId(),
+        sessionId: "physical-session",
+        sessionIdentity: "pfx:scope-a:fingerprint-a",
+        sessionIdentityKind: "prefix_affinity",
+        affinityScopeTag: "scope-a",
+        affinityFingerprint: "fingerprint-a",
+        affinityFingerprintChain: ["fingerprint-root", "fingerprint-a"],
+        isReplay: true,
+        replaySourceRequestId: 7,
+        costUsd: "9.990000000000000",
+      });
+
+      const ledgerRow = await selectLedgerRowByRequestId(requestId);
+      expect(ledgerRow).toMatchObject({
+        sessionId: "physical-session",
+        sessionIdentity: "pfx:scope-a:fingerprint-a",
+        sessionIdentityKind: "prefix_affinity",
+        affinityScopeTag: "scope-a",
+        affinityFingerprint: "fingerprint-a",
+        affinityFingerprintChain: ["fingerprint-root", "fingerprint-a"],
+        isReplay: true,
+        replaySourceRequestId: 7,
+      });
+      expect(toNumber(ledgerRow?.costUsd)).toBe(0);
+    });
+
     test("does not insert usage_ledger row for warmup requests", async () => {
       const requestId = await insertMessageRequestRow({
         key: nextKey("trigger-warmup"),
@@ -295,49 +349,45 @@ run("usage ledger integration", () => {
   });
 
   describe("backfill", () => {
-    test(
-      "backfill copies non-warmup message_request rows when ledger rows are missing",
-      {
-        timeout: 60_000,
-      },
-      async () => {
-        const userId = nextUserId();
-        const providerId = nextProviderId();
-        const keepA = await insertMessageRequestRow({
-          key: nextKey("backfill-a"),
-          userId,
-          providerId,
-          costUsd: "1.100000000000000",
-        });
-        const keepB = await insertMessageRequestRow({
-          key: nextKey("backfill-b"),
-          userId,
-          providerId,
-          costUsd: "2.200000000000000",
-        });
-        const warmup = await insertMessageRequestRow({
-          key: nextKey("backfill-warmup"),
-          userId,
-          providerId,
-          blockedBy: "warmup",
-        });
+    test("backfill copies non-warmup message_request rows when ledger rows are missing", {
+      timeout: 60_000,
+    }, async () => {
+      const userId = nextUserId();
+      const providerId = nextProviderId();
+      const keepA = await insertMessageRequestRow({
+        key: nextKey("backfill-a"),
+        userId,
+        providerId,
+        costUsd: "1.100000000000000",
+      });
+      const keepB = await insertMessageRequestRow({
+        key: nextKey("backfill-b"),
+        userId,
+        providerId,
+        costUsd: "2.200000000000000",
+      });
+      const warmup = await insertMessageRequestRow({
+        key: nextKey("backfill-warmup"),
+        userId,
+        providerId,
+        blockedBy: "warmup",
+      });
 
-        await db.delete(usageLedger).where(inArray(usageLedger.requestId, [keepA, keepB, warmup]));
+      await db.delete(usageLedger).where(inArray(usageLedger.requestId, [keepA, keepB, warmup]));
 
-        const summary = await backfillUsageLedger();
-        expect(summary.totalProcessed).toBeGreaterThanOrEqual(2);
+      const summary = await backfillUsageLedger();
+      expect(summary.totalProcessed).toBeGreaterThanOrEqual(2);
 
-        const rows = await db
-          .select({ requestId: usageLedger.requestId })
-          .from(usageLedger)
-          .where(inArray(usageLedger.requestId, [keepA, keepB, warmup]));
-        const requestIds = rows.map((row) => row.requestId);
+      const rows = await db
+        .select({ requestId: usageLedger.requestId })
+        .from(usageLedger)
+        .where(inArray(usageLedger.requestId, [keepA, keepB, warmup]));
+      const requestIds = rows.map((row) => row.requestId);
 
-        expect(requestIds).toContain(keepA);
-        expect(requestIds).toContain(keepB);
-        expect(requestIds).not.toContain(warmup);
-      }
-    );
+      expect(requestIds).toContain(keepA);
+      expect(requestIds).toContain(keepB);
+      expect(requestIds).not.toContain(warmup);
+    });
 
     test("backfill is idempotent when running twice", { timeout: 60_000 }, async () => {
       const requestId = await insertMessageRequestRow({
@@ -365,32 +415,76 @@ run("usage ledger integration", () => {
       expect(countAfterSecond[0]?.count ?? 0).toBe(1);
     });
 
-    test(
-      "backfill repairs existing ledger rows whose success_rate_outcome is null",
-      {
-        timeout: 60_000,
-      },
-      async () => {
-        const requestId = await insertMessageRequestRow({
-          key: nextKey("backfill-null-outcome"),
-          userId: nextUserId(),
-          providerId: nextProviderId(),
-          statusCode: 499,
-          errorMessage: "request aborted by client",
-        });
+    test("backfill repairs existing ledger rows whose success_rate_outcome is null", {
+      timeout: 60_000,
+    }, async () => {
+      const requestId = await insertMessageRequestRow({
+        key: nextKey("backfill-null-outcome"),
+        userId: nextUserId(),
+        providerId: nextProviderId(),
+        statusCode: 499,
+        errorMessage: "request aborted by client",
+      });
 
-        await db
-          .update(usageLedger)
-          .set({ successRateOutcome: null })
-          .where(eq(usageLedger.requestId, requestId));
+      await db
+        .update(usageLedger)
+        .set({ successRateOutcome: null })
+        .where(eq(usageLedger.requestId, requestId));
 
-        const summary = await backfillUsageLedger();
-        expect(summary.alreadyExisted).toBeGreaterThanOrEqual(1);
+      const summary = await backfillUsageLedger();
+      expect(summary.alreadyExisted).toBeGreaterThanOrEqual(1);
 
-        const ledgerRow = await selectLedgerRowByRequestId(requestId);
-        expect(ledgerRow?.successRateOutcome).toBe("excluded");
-      }
-    );
+      const ledgerRow = await selectLedgerRowByRequestId(requestId);
+      expect(ledgerRow?.successRateOutcome).toBe("excluded");
+    });
+
+    test("backfill repairs stale Session identity and Replay provenance", {
+      timeout: 60_000,
+    }, async () => {
+      const requestId = await insertMessageRequestRow({
+        key: nextKey("backfill-replay-identity"),
+        userId: nextUserId(),
+        providerId: nextProviderId(),
+        sessionId: "physical-backfill",
+        sessionIdentity: "pfx:scope-b:fingerprint-b",
+        sessionIdentityKind: "prefix_affinity",
+        affinityScopeTag: "scope-b",
+        affinityFingerprint: "fingerprint-b",
+        affinityFingerprintChain: ["fingerprint-b"],
+        isReplay: true,
+        replaySourceRequestId: 8,
+        costUsd: "8.880000000000000",
+      });
+
+      await db
+        .update(usageLedger)
+        .set({
+          sessionIdentity: null,
+          sessionIdentityKind: null,
+          affinityScopeTag: null,
+          affinityFingerprint: null,
+          affinityFingerprintChain: null,
+          isReplay: false,
+          replaySourceRequestId: null,
+          costUsd: "8.880000000000000",
+        })
+        .where(eq(usageLedger.requestId, requestId));
+
+      const summary = await backfillUsageLedger();
+      expect(summary.alreadyExisted).toBeGreaterThanOrEqual(1);
+
+      const ledgerRow = await selectLedgerRowByRequestId(requestId);
+      expect(ledgerRow).toMatchObject({
+        sessionIdentity: "pfx:scope-b:fingerprint-b",
+        sessionIdentityKind: "prefix_affinity",
+        affinityScopeTag: "scope-b",
+        affinityFingerprint: "fingerprint-b",
+        affinityFingerprintChain: ["fingerprint-b"],
+        isReplay: true,
+        replaySourceRequestId: 8,
+      });
+      expect(toNumber(ledgerRow?.costUsd)).toBe(0);
+    });
   });
 
   describe("read path consistency", () => {
